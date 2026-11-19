@@ -247,3 +247,19 @@ export const pairText = (p, leftName, rightName) => {
   const lab = INTENSITY.find((i) => i.v === p.intensity)?.label;
   return `${side} 쪽 ${p.intensity} (${lab})`;
 };
+
+// 일부 항목이 빠진 응답(이전 버전 · 작성 초기)도 안전하게 다루도록 빈 구조와 합침
+export const normalizeAnswers = (a) => {
+  const base = emptyAnswers();
+  const src = a && typeof a === "object" ? a : {};
+  const outA = { ...base, ...src };
+  for (const k of Object.keys(base)) {
+    const bv = base[k];
+    if (bv && typeof bv === "object" && !Array.isArray(bv)) outA[k] = { ...bv, ...(src[k] && typeof src[k] === "object" ? src[k] : {}) };
+  }
+  if (!Array.isArray(outA.features.selected)) outA.features.selected = [];
+  if (!Array.isArray(outA.basic.duty)) outA.basic.duty = [];
+  if (!Array.isArray(outA.basic.careTypes)) outA.basic.careTypes = [];
+  return outA;
+};
+export const normalizeRecord = (r) => ({ ...r, answers: normalizeAnswers(r?.answers) });

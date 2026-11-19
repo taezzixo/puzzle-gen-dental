@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { SURVEY_CONFIG as CFG } from "./config.js";
 import {
   CONSENT_ITEMS, CONSENT_INFO, BASIC, CATEGORIES, SUBITEMS, MAIN_PAIRS, SUB_PAIRS, ABS_ITEMS, SCALE5, QUANT,
-  SATISFACTION, SAT_SCALE, AGENT_Q, FEATURES, INTENT_SCALE, FACTORS, emptyAnswers,
+  SATISFACTION, SAT_SCALE, AGENT_Q, FEATURES, INTENT_SCALE, FACTORS, emptyAnswers, normalizeAnswers,
 } from "./questions.js";
 import { STEPS, progressPct, totalMissing } from "./steps.js";
 import { loadRecord, saveRecord, listSummary } from "./storage.js";
@@ -99,7 +99,7 @@ export default function SurveyApp({ initialId }) {
     setLoading(false);
     window.location.hash = `#/survey/${id}`;
     if (rec) {
-      const merged = { ...rec, answers: { ...emptyAnswers(), ...rec.answers } };
+      const merged = { ...rec, answers: normalizeAnswers(rec.answers) };
       setConfirmWho({ id, rec: merged, source });
     } else {
       setEvaluatorId(id);

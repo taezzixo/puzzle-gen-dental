@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { SURVEY_CONFIG as CFG, API_URL } from "../survey/config.js";
 import { listAll, checkPin } from "../survey/storage.js";
 import { progressPct } from "../survey/steps.js";
+import { normalizeRecord } from "../survey/questions.js";
 import { buildReport } from "./reportModel.js";
 import { ReportView, REPORT_CSS } from "./ReportView.jsx";
 import { responseSections, toCsv, fmtDT } from "./responseRows.js";
@@ -98,7 +99,7 @@ export default function AdminApp() {
   };
   useEffect(() => { if (pin) load(pin); /* eslint-disable-next-line */ }, []);
 
-  const records = data?.records || [];
+  const records = useMemo(() => (data?.records || []).filter((r) => r && r.evaluatorId).map(normalizeRecord), [data]);
   const reportRecs = useMemo(() => records.filter((r) => includeDrafts || r.status === "submitted"), [records, includeDrafts]);
   const report = useMemo(() => buildReport(reportRecs, { includeDrafts }), [reportRecs, includeDrafts]);
   const reportName = `[사용성평가 보고서] PuzzleGEN_${stamp()}`;

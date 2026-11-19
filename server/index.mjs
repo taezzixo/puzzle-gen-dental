@@ -42,30 +42,6 @@ await fs.mkdir(DATA_DIR, { recursive: true });
 
 const api = createSurveyApi({ dataDir: DATA_DIR, adminPin: ADMIN_PIN });
 
-// ── 관리자 비밀번호 무차별 대입 방지: IP당 15분에 10회 실패 시 차단 ──
-const fails = new Map();
-const WINDOW = 15 * 60 * 1000, MAX_FAILS = 10;
-// Cloudflare를 거친 요청은 CF-Connecting-IP에 실제 접속자 IP가 담김
-const clientIp = (req) => String(req.headers["cf-connecting-ip"] || req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.socket.remoteAddress || "";
-function pinGuard(req, res) {
-  const url = new URL(req.url, "http://local");
-  if (url.searchParams.get("action") !== "list") return false;
-  const ip = clientIp(req), now = Date.now();
-  const rec = fails.get(ip);
-  if (rec && now - rec.first > WINDOW) fails.delete(ip);
-  const cur = fails.get(ip);
-  if (cur && cur.n >= MAX_FAILS) {
-    res.statusCode = 429; res.setHeader("Content-Type", "application/json; charset=utf-8");
-    res.end(JSON.stringify({ ok: false, code: "LOCKED", error: "비밀번호를 여러 번 틀려 잠시 차단되었습니다. 15분 후 다시 시도해 주세요." }));
-    return true;
-  }
-  if (url.searchParams.get("pin") !== ADMIN_PIN) {
-    const r = fails.get(ip) || { n: 0, first: now };
-    r.n += 1; fails.set(ip, r);
-  } else fails.delete(ip);
-  return false;
-}
-
 // ── 정적 파일 (메모리 캐시 + gzip) ──
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".ico": "image/x-icon", ".json": "application/json", ".woff2": "font/woff2", ".txt": "text/plain; charset=utf-8" };
 const COMPRESSIBLE = /^(text\/|application\/json|image\/svg)/;
@@ -90,8 +66,6 @@ const server = http.createServer(async (req, res) => {
   const { pathname } = new URL(req.url, "http://local");
   if (pathname === "/healthz") { res.setHeader("Content-Type", "text/plain"); return res.end("ok"); }
   if (pathname === "/api/survey") {
-    res.setHeader("Cache-Control", "no-store");
-    if (pinGuard(req, res)) return;
     return api(req, res);
   }
   if (req.method !== "GET" && req.method !== "HEAD") { res.statusCode = 405; return res.end(); }

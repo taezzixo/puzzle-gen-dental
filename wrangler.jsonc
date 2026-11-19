@@ -1,0 +1,22 @@
+// Cloudflare Worker 설정 — 이름 "pgd" → https://pgd.<계정>.workers.dev
+// database_id 는 'npx wrangler d1 create pgd-survey' 실행 결과의 값으로 바꿉니다.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "pgd",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "pgd-survey",
+      "database_id": "00000000-0000-0000-0000-000000000000"
+    }
+  ],
+  "observability": { "enabled": true }
+}

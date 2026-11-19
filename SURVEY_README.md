@@ -1,36 +1,77 @@
-# PuzzleGen Dental 사용성 평가 (PGD) — pgd.puzzle-ai.com
+# PuzzleGen Dental 사용성 평가 (PGD)
 
 POC 체험에 참여한 평가자 5명이 웹 주소로 접속해 설문에 답하고 저장하는 화면입니다.
 관리자는 응답을 모아 보고서를 보고 Word · PDF로 내려받을 수 있습니다.
-Node 서버 하나가 화면과 저장 API를 함께 제공하며, 응답은 서버 디스크에 파일로 저장됩니다.
+
+**기본 배포: Cloudflare Worker `pgd`** — 서버 없이 Cloudflare에서 바로 실행되고, 응답은 Cloudflare D1 데이터베이스에 저장됩니다.
 
 | 화면 | 주소 | 설명 |
 |---|---|---|
-| 평가자 설문 | **https://pgd.puzzle-ai.com/#/survey** | 평가자 번호(1~5)를 고른 뒤 단계별로 응답합니다 |
-| 평가자 바로가기 | https://pgd.puzzle-ai.com/#/survey/3 | 3번 평가자 화면으로 바로 들어갑니다 (개인별 링크로 전달) |
-| 관리자 | **https://pgd.puzzle-ai.com/#/admin** | 비밀번호를 입력해 응답 현황, 보고서, 원자료를 확인합니다 |
-| 기존 PoC 데모 | https://pgd.puzzle-ai.com/ | 오른쪽 위 **「사용성 평가 참여」** 버튼으로 설문 화면으로 이동합니다 |
+| 평가자 설문 | **https://pgd.<계정 하위도메인>.workers.dev/#/survey** | 평가자 번호(1~5)를 고른 뒤 단계별로 응답합니다 |
+| 평가자 바로가기 | …/#/survey/3 | 3번 평가자 화면으로 바로 들어갑니다 (개인별 링크로 전달) |
+| 관리자 | **…/#/admin** | 비밀번호를 입력해 응답 현황, 보고서, 원자료를 확인합니다 |
+| 기존 PoC 데모 | …/ | 오른쪽 위 **「사용성 평가 참여」** 버튼으로 설문 화면으로 이동합니다 |
 
-> 도메인 이름은 Cloudflare 대시보드에서만 정합니다. 코드에는 도메인이 들어 있지 않으므로 다른 이름을 쓰려면 아래 1단계의 Public hostname만 바꾸면 됩니다.
-
----
-
-## 구성 한눈에 보기
-
-```
-평가자/관리자 브라우저 ──HTTPS──▶ Cloudflare (pgd.puzzle-ai.com)
-                                      │  Cloudflare Tunnel (서버에서 바깥으로 연결)
-                                      ▼
-                    서버: [tunnel 컨테이너] ──▶ [survey 컨테이너 :8080] ──▶ ./data (응답 원본)
-```
-
-- 서버의 포트를 인터넷에 열 필요가 없습니다. 방화벽에서 80, 443, 8080을 열지 않아도 됩니다.
-- HTTPS 인증서는 Cloudflare가 자동으로 발급하고 갱신합니다.
-- 서버가 사무실 공유기 뒤나 사내망에 있어도 동작합니다. 바깥으로 인터넷 연결만 되면 됩니다.
+`<계정 하위도메인>`은 Cloudflare **Workers 및 Pages → 개요** 오른쪽에 표시되는 `○○○.workers.dev`입니다.
+나중에 Cloudflare에 도메인을 추가하면, Worker 설정의 **Domains & Routes**에서 `pgd.도메인`을 바로 연결할 수 있습니다.
 
 ---
 
-## 1단계. Cloudflare에서 터널 만들기 (처음 한 번)
+## A. Cloudflare Worker로 배포 (권장)
+
+### A-1. 처음 한 번: 데이터베이스 만들기
+
+```bash
+npm ci
+```
+
+```bash
+npx wrangler login
+```
+
+브라우저가 열리면 Cloudflare 계정으로 로그인해 허용합니다.
+
+```bash
+npx wrangler d1 create pgd-survey
+```
+
+출력된 `database_id` 값을 `wrangler.jsonc`의 `"database_id"` 자리에 붙여넣습니다. 표는 첫 접속 때 자동으로 만들어집니다.
+
+### A-2. 배포
+
+```bash
+npm run cf:deploy
+```
+
+```bash
+npx wrangler secret put SURVEY_ADMIN_PIN
+```
+
+관리자 비밀번호를 입력하라는 안내가 나오면 원하는 비밀번호를 입력합니다.
+배포가 끝나면 출력되는 `https://pgd.….workers.dev` 주소로 접속합니다.
+
+### A-3. 운영
+
+| 작업 | 방법 |
+|---|---|
+| 코드 수정 후 다시 배포 | `npm run cf:deploy` |
+| 관리자 비밀번호 변경 | `npx wrangler secret put SURVEY_ADMIN_PIN` 또는 대시보드 → Workers → pgd → 설정 → 변수 및 비밀 |
+| 원본 응답 보기 | 관리자 화면, 또는 대시보드 → 스토리지 및 데이터베이스 → D1 → pgd-survey (`responses` 표: 최신본, `history` 표: 저장 이력) |
+| 실시간 로그 | `npx wrangler tail pgd` |
+| 백업 | `npx wrangler d1 export pgd-survey --remote --output=pgd-backup.sql` (관리자 화면의 「전체 원본 (JSON)」도 가능) |
+| 파기 | 조사 종료 후 `npx wrangler d1 delete pgd-survey` |
+
+- 무료 요금제 한도(하루 요청 10만 건, D1 쓰기 하루 10만 건) 안에서 충분히 운영됩니다.
+- 로컬 시험: `.dev.vars` 파일에 `SURVEY_ADMIN_PIN=시험용비밀번호`를 적고 `npm run cf:dev`를 실행합니다.
+
+---
+
+## B. Node 서버로 배포 (대안 — 직접 운영하는 서버가 있을 때)
+
+같은 화면과 저장 로직을 Node 서버로도 실행할 수 있습니다. 응답은 서버 디스크의 `data/` 폴더에 파일로 저장됩니다.
+Cloudflare 계정에 **도메인이 등록되어 있다면**, 아래 Cloudflare Tunnel로 서버 포트를 열지 않고 `https://pgd.도메인`으로 연결할 수 있습니다.
+
+### B-1. Cloudflare에서 터널 만들기 (처음 한 번 · 도메인 필요)
 
 1. Cloudflare 대시보드에 로그인한 뒤 **Zero Trust**로 들어갑니다. 메뉴에서 **Networks → Tunnels**를 고릅니다.
 2. **Create a tunnel** → 유형 **Cloudflared**를 고르고, 터널 이름을 `pgd`로 정합니다.
@@ -40,16 +81,16 @@ Node 서버 하나가 화면과 저장 API를 함께 제공하며, 응답은 서
 | 항목 | 값 |
 |---|---|
 | Subdomain | `pgd` |
-| Domain | `puzzle-ai.com` |
+| Domain | Cloudflare에 등록한 도메인 |
 | Path | (비움) |
 | Service Type | `HTTP` |
 | URL | `survey:8080` ※ Docker 방식. PM2 방식이면 `localhost:8080` |
 
 DNS 레코드(`pgd` CNAME)는 Cloudflare가 자동으로 만듭니다.
 
-## 2단계. 서버에서 실행하기
+### B-2. 서버에서 실행하기
 
-### 방법 A. Docker (권장)
+#### Docker (권장)
 
 ```bash
 git clone -b claude/funny-cori-rljacc https://github.com/taezzixo/puzzle-gen-dental.git
@@ -63,18 +104,18 @@ cd puzzle-gen-dental && cp .env.example .env
 
 ```
 SURVEY_ADMIN_PIN=관리자_비밀번호
-CLOUDFLARE_TUNNEL_TOKEN=eyJ...(1단계에서 복사한 토큰)
+CLOUDFLARE_TUNNEL_TOKEN=eyJ...(B-1에서 복사한 토큰)
 ```
 
 ```bash
 docker compose up -d --build
 ```
 
-1~2분 뒤 Cloudflare 터널 목록에서 `pgd`가 **HEALTHY**로 바뀌면 https://pgd.puzzle-ai.com/#/survey 로 접속됩니다.
+1~2분 뒤 Cloudflare 터널 목록에서 `pgd`가 **HEALTHY**로 바뀌면 `https://pgd.도메인/#/survey`로 접속됩니다.
 
-### 방법 B. Docker 없이 (PM2 + cloudflared 직접 설치)
+#### Docker 없이 (PM2 + cloudflared 직접 설치)
 
-Node 18 이상이 필요합니다. 1단계의 Service URL은 `localhost:8080`으로 입력합니다.
+Node 18 이상이 필요합니다. B-1의 Service URL은 `localhost:8080`으로 입력합니다.
 
 ```bash
 cd puzzle-gen-dental && npm ci && npm run build
@@ -100,16 +141,16 @@ pm2 start ecosystem.config.cjs && pm2 save && pm2 startup
 sudo cloudflared service install eyJ...(토큰)
 ```
 
-### 환경변수 (.env)
+#### 환경변수 (.env)
 
 | 이름 | 필수 | 설명 |
 |---|---|---|
 | `SURVEY_ADMIN_PIN` | ✔ | 관리자 비밀번호. 없거나 `1234`이면 서버가 시작되지 않습니다 |
-| `CLOUDFLARE_TUNNEL_TOKEN` | ✔ (Docker) | 1단계에서 받은 터널 토큰 |
+| `CLOUDFLARE_TUNNEL_TOKEN` | ✔ (Docker) | B-1에서 받은 터널 토큰 |
 | `PORT` | | 서버 내부 포트 (기본 8080) |
 | `SURVEY_DATA_DIR` | | 응답 저장 폴더 (기본 `./data`) |
 
-### Cloudflare 권장 설정 (선택)
+#### Cloudflare 권장 설정 (선택)
 
 아래는 기본값 그대로 두면 됩니다. 특별히 바꿀 것은 없습니다.
 
@@ -119,7 +160,7 @@ sudo cloudflared service install eyJ...(토큰)
 
 ---
 
-## 운영
+### B-3. Node 서버 운영
 
 | 작업 | Docker | PM2 |
 |---|---|---|
