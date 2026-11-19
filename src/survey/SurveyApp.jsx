@@ -113,19 +113,43 @@ export default function SurveyApp({ initialId }) {
   const A = record?.answers;
   const update = (fn) => {
     dirty.current = true;
+    editSeq.current += 1;
     setRecord((r) => { const answers = structuredClone(r.answers); fn(answers); return { ...r, answers }; });
   };
 
-  const doSave = async (opts = {}) => {
-    if (!record) return;
-    const rec = { ...record, step, progress: progressPct(record.answers), ...(opts.patch || {}) };
-    if (!opts.silent) setSaveState({ kind: "saving", text: "저장하는 중입니다…" });
+  // 저장은 한 번에 하나씩 순서대로 보내고, 보낼 때마다 그 시점의 최신 응답을 사용합니다.
+  // 서버 응답이 오는 동안 새로 고른 답이 이전 상태로 덮이지 않도록, 돌아온 값은 저장 시각만 반영합니다.
+  const recordRef = useRef(record); recordRef.current = record;
+  const stepRef = useRef(step); stepRef.current = step;
+  const editSeq = useRef(0);
+  const saveQueue = useRef(Promise.resolve());
+  const saveNow = async (opts) => {
+    const base = recordRef.current;
+    if (!base) return null;
+    const seqAtStart = editSeq.current;
+    const rec = { ...base, step: opts.step ?? stepRef.current, progress: progressPct(base.answers), ...(opts.patch || {}) };
     const r = await saveRecord(rec);
-    dirty.current = false;
-    setRecord(r.record);
-    if (r.where === "server") { if (!opts.silent) setSaveState({ kind: "ok", text: `저장되었습니다 · ${fmtTime(r.savedAt)}` }); else setSaveState(null); }
-    else setSaveState({ kind: "warn", text: "서버에 저장하지 못해 이 기기에만 임시 저장했습니다. 잠시 후 [저장하기]를 다시 눌러 주세요." });
+    setRecord((cur) => ({ ...cur, ...(opts.patch || {}), step: rec.step, progress: rec.progress, updatedAt: r.record.updatedAt, savedAt: r.savedAt }));
+    if (r.where === "server") {
+      if (editSeq.current === seqAtStart) dirty.current = false;
+      if (!opts.silent) setSaveState({ kind: "ok", text: `저장되었습니다 · ${fmtTime(r.savedAt)}` }); else setSaveState(null);
+    } else setSaveState({ kind: "warn", text: "서버에 저장하지 못해 이 기기에만 임시 저장했습니다. 잠시 후 [저장하기]를 다시 눌러 주세요." });
     return r;
+  };
+  // 아직 보내지 않은 저장 요청은 하나로 합침 (어차피 최신 응답을 보내므로)
+  const pendingSave = useRef(null);
+  const doSave = (opts = {}) => {
+    if (!opts.silent) setSaveState({ kind: "saving", text: "저장하는 중입니다…" });
+    const q = pendingSave.current;
+    if (q) {
+      q.opts = { silent: q.opts.silent && opts.silent, step: opts.step ?? q.opts.step, patch: { ...(q.opts.patch || {}), ...(opts.patch || {}) } };
+      return q.promise;
+    }
+    const entry = { opts };
+    entry.promise = saveQueue.current.then(() => { pendingSave.current = null; return saveNow(entry.opts); });
+    pendingSave.current = entry;
+    saveQueue.current = entry.promise.catch(() => {});
+    return entry.promise;
   };
 
   // 창을 닫을 때 저장하지 않은 내용 경고
@@ -143,10 +167,11 @@ export default function SurveyApp({ initialId }) {
   const next = async (force) => {
     const miss = STEPS[step].missing(A);
     if (miss > 0 && !force) { setMissingPrompt(miss); return; }
-    if (dirty.current) doSave({ silent: true });
-    goto(Math.min(step + 1, STEPS.length - 1));
+    const to = Math.min(step + 1, STEPS.length - 1);
+    if (dirty.current) doSave({ silent: true, step: to });
+    goto(to);
   };
-  const prev = () => { if (dirty.current) doSave({ silent: true }); goto(Math.max(step - 1, 0)); };
+  const prev = () => { const to = Math.max(step - 1, 0); if (dirty.current) doSave({ silent: true, step: to }); goto(to); };
 
   const submit = async () => {
     setSubmitAsk(false);

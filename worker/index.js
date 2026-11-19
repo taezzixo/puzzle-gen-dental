@@ -1,6 +1,7 @@
-// Cloudflare Worker "pgd": 설문 화면(정적 파일) + 저장 API(D1 데이터베이스)
+// Cloudflare Worker "pgd": 설문 화면(빌드 파일 내장) + 저장 API(D1 데이터베이스)
 // 배포: npm run cf:deploy  (SURVEY_README.md 참고)
 import { handleSurvey } from "../server/surveyCore.mjs";
+import FILES from "./assets.gen.js";
 
 const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS responses (evaluator_id INTEGER PRIMARY KEY, json TEXT NOT NULL, updated_at TEXT)",
@@ -49,6 +50,18 @@ export default {
       return json(r.status, r.body);
     }
     // 그 외는 빌드된 화면(dist). 해시 라우팅이라 없는 경로는 index.html
-    return env.ASSETS.fetch(request);
+    if (request.method !== "GET" && request.method !== "HEAD") return new Response(null, { status: 405 });
+    const file = FILES[url.pathname] || FILES[url.pathname + "/index.html"] || FILES["/index.html"];
+    const body = file.text ?? Uint8Array.from(atob(file.b64), (c) => c.charCodeAt(0));
+    return new Response(request.method === "HEAD" ? null : body, {
+      headers: {
+        "Content-Type": file.type,
+        // 파일명에 해시가 붙은 빌드 산출물은 오래 캐시, index.html은 매번 확인
+        "Cache-Control": file.immutable ? "public, max-age=31536000, immutable" : "no-cache",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "same-origin",
+        "X-Frame-Options": "SAMEORIGIN",
+      },
+    });
   },
 };

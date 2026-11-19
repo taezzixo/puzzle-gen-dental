@@ -6,3 +6,4 @@ data/
 .env.local
 .wrangler/
 .dev.vars
+worker/assets.gen.js

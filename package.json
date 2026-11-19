@@ -8,8 +8,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "start": "node server/index.mjs",
-    "cf:dev": "npm run build && wrangler dev",
-    "cf:deploy": "npm run build && wrangler deploy"
+    "cf:dev": "npm run cf:assets && wrangler dev",
+    "cf:deploy": "npm run cf:assets && wrangler deploy",
+    "cf:assets": "npm run build && node scripts/gen-worker-assets.mjs"
   },
   "dependencies": {
     "docx": "^9.5.1",

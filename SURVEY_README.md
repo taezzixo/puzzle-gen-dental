@@ -3,23 +3,31 @@
 POC 체험에 참여한 평가자 5명이 웹 주소로 접속해 설문에 답하고 저장하는 화면입니다.
 관리자는 응답을 모아 보고서를 보고 Word · PDF로 내려받을 수 있습니다.
 
-**기본 배포: Cloudflare Worker `pgd`** — 서버 없이 Cloudflare에서 바로 실행되고, 응답은 Cloudflare D1 데이터베이스에 저장됩니다.
+**운영 중: Cloudflare Worker `pgd`** — 서버 없이 Cloudflare에서 실행되고, 응답은 Cloudflare D1 데이터베이스에 저장됩니다.
 
 | 화면 | 주소 | 설명 |
 |---|---|---|
-| 평가자 설문 | **https://pgd.<계정 하위도메인>.workers.dev/#/survey** | 평가자 번호(1~5)를 고른 뒤 단계별로 응답합니다 |
-| 평가자 바로가기 | …/#/survey/3 | 3번 평가자 화면으로 바로 들어갑니다 (개인별 링크로 전달) |
-| 관리자 | **…/#/admin** | 비밀번호를 입력해 응답 현황, 보고서, 원자료를 확인합니다 |
-| 기존 PoC 데모 | …/ | 오른쪽 위 **「사용성 평가 참여」** 버튼으로 설문 화면으로 이동합니다 |
+| 평가자 설문 | **https://pgd.kth95280.workers.dev/#/survey** | 평가자 번호(1~5)를 고른 뒤 단계별로 응답합니다 |
+| 평가자 바로가기 | https://pgd.kth95280.workers.dev/#/survey/3 | 3번 평가자 화면으로 바로 들어갑니다 (개인별 링크로 전달) |
+| 관리자 | **https://pgd.kth95280.workers.dev/#/admin** | 비밀번호를 입력해 응답 현황, 보고서, 원자료를 확인합니다 |
+| 기존 PoC 데모 | https://pgd.kth95280.workers.dev/ | 오른쪽 위 **「사용성 평가 참여」** 버튼으로 설문 화면으로 이동합니다 |
 
-`<계정 하위도메인>`은 Cloudflare **Workers 및 Pages → 개요** 오른쪽에 표시되는 `○○○.workers.dev`입니다.
-나중에 Cloudflare에 도메인을 추가하면, Worker 설정의 **Domains & Routes**에서 `pgd.도메인`을 바로 연결할 수 있습니다.
+나중에 Cloudflare에 도메인을 추가하면, 대시보드의 Workers → pgd → 설정 → **Domains & Routes**에서 `pgd.도메인`을 바로 연결할 수 있습니다.
 
 ---
 
-## A. Cloudflare Worker로 배포 (권장)
+## A. Cloudflare Worker (현재 운영 중)
 
-### A-1. 처음 한 번: 데이터베이스 만들기
+| 항목 | 값 |
+|---|---|
+| Worker 이름 | `pgd` |
+| 주소 | https://pgd.kth95280.workers.dev |
+| 데이터베이스 | D1 `pgd-survey` (APAC 지역, ID는 `wrangler.jsonc`에 기록) |
+| 관리자 비밀번호 | Worker 비밀값 `SURVEY_ADMIN_PIN` |
+
+화면 파일(dist)은 배포할 때 `worker/assets.gen.js`로 Worker 코드 안에 포함됩니다. 따라서 Worker 하나로 화면과 저장 API가 함께 동작합니다.
+
+### A-1. 코드 수정 후 다시 배포
 
 ```bash
 npm ci
@@ -29,40 +37,23 @@ npm ci
 npx wrangler login
 ```
 
-브라우저가 열리면 Cloudflare 계정으로 로그인해 허용합니다.
-
-```bash
-npx wrangler d1 create pgd-survey
-```
-
-출력된 `database_id` 값을 `wrangler.jsonc`의 `"database_id"` 자리에 붙여넣습니다. 표는 첫 접속 때 자동으로 만들어집니다.
-
-### A-2. 배포
-
 ```bash
 npm run cf:deploy
 ```
 
-```bash
-npx wrangler secret put SURVEY_ADMIN_PIN
-```
-
-관리자 비밀번호를 입력하라는 안내가 나오면 원하는 비밀번호를 입력합니다.
-배포가 끝나면 출력되는 `https://pgd.….workers.dev` 주소로 접속합니다.
-
-### A-3. 운영
+### A-2. 운영
 
 | 작업 | 방법 |
 |---|---|
-| 코드 수정 후 다시 배포 | `npm run cf:deploy` |
-| 관리자 비밀번호 변경 | `npx wrangler secret put SURVEY_ADMIN_PIN` 또는 대시보드 → Workers → pgd → 설정 → 변수 및 비밀 |
+| 관리자 비밀번호 변경 | 대시보드 → Workers → pgd → 설정 → 변수 및 비밀 → `SURVEY_ADMIN_PIN` 편집, 또는 `npx wrangler secret put SURVEY_ADMIN_PIN` |
 | 원본 응답 보기 | 관리자 화면, 또는 대시보드 → 스토리지 및 데이터베이스 → D1 → pgd-survey (`responses` 표: 최신본, `history` 표: 저장 이력) |
-| 실시간 로그 | `npx wrangler tail pgd` |
+| 실시간 로그 | 대시보드 → Workers → pgd → 로그, 또는 `npx wrangler tail pgd` |
 | 백업 | `npx wrangler d1 export pgd-survey --remote --output=pgd-backup.sql` (관리자 화면의 「전체 원본 (JSON)」도 가능) |
 | 파기 | 조사 종료 후 `npx wrangler d1 delete pgd-survey` |
 
 - 무료 요금제 한도(하루 요청 10만 건, D1 쓰기 하루 10만 건) 안에서 충분히 운영됩니다.
 - 로컬 시험: `.dev.vars` 파일에 `SURVEY_ADMIN_PIN=시험용비밀번호`를 적고 `npm run cf:dev`를 실행합니다.
+- 다른 Cloudflare 계정에 새로 배포할 때는 먼저 `npx wrangler d1 create pgd-survey`를 실행합니다. 출력된 ID를 `wrangler.jsonc`의 `database_id`에 넣은 뒤 `npm run cf:deploy`를 실행하고, `npx wrangler secret put SURVEY_ADMIN_PIN`으로 비밀번호를 지정합니다. 표는 첫 접속 때 자동으로 만들어집니다.
 
 ---
 
