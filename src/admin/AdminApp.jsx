@@ -26,9 +26,9 @@ function PinGate({ onOk }) {
   const [busy, setBusy] = useState(false);
   const go = async () => {
     setBusy(true); setErr("");
-    const ok = await checkPin(pin);
+    const r = await checkPin(pin);
     setBusy(false);
-    if (ok) { try { sessionStorage.setItem(PIN_KEY, pin); } catch { /* */ } onOk(pin); } else setErr("비밀번호가 올바르지 않습니다.");
+    if (r.ok) { try { sessionStorage.setItem(PIN_KEY, pin); } catch { /* */ } onOk(pin); } else setErr(r.error || "비밀번호가 올바르지 않습니다.");
   };
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4" style={{ fontFamily: "'Pretendard','Malgun Gothic',system-ui,sans-serif" }}>
@@ -93,7 +93,7 @@ export default function AdminApp() {
   const load = async (p = pin) => {
     setLoading(true); setErr("");
     try { setData(await listAll(p)); setAuthed(true); }
-    catch (e) { if (e.code === "BAD_PIN") { setAuthed(false); try { sessionStorage.removeItem(PIN_KEY); } catch { /* */ } } else setErr(e.message); }
+    catch (e) { if (e.code) { setAuthed(false); try { sessionStorage.removeItem(PIN_KEY); } catch { /* */ } } else setErr(e.message); }
     setLoading(false);
   };
   useEffect(() => { if (pin) load(pin); /* eslint-disable-next-line */ }, []);

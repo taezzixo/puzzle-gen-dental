@@ -1,0 +1,17 @@
+# 사용법
+#   1) .env.example 을 .env 로 복사하고 SURVEY_ADMIN_PIN 을 바꿉니다
+#   2) docker compose up -d --build
+# 응답 원본은 ./data 폴더에 저장되며, 컨테이너를 다시 만들어도 유지됩니다.
+services:
+  survey:
+    build: .
+    image: puzzlegen-survey
+    container_name: puzzlegen-survey
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      SURVEY_ADMIN_PIN: ${SURVEY_ADMIN_PIN:?SURVEY_ADMIN_PIN 을 .env 에 설정하세요}
+      TZ: Asia/Seoul
+    volumes:
+      - ./data:/app/data

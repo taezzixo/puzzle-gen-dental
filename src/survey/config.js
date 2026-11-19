@@ -14,7 +14,5 @@ export const SURVEY_CONFIG = {
   scenarioCount: 9,
 };
 
-// 저장 API 주소.
-// - 비워두면 같은 서버의 /api/survey 를 사용합니다 (npm run dev / npm start).
-// - Google Apps Script 등 외부 저장소를 쓰는 경우 빌드 시 VITE_SURVEY_API_URL 로 지정합니다.
-export const API_URL = (import.meta.env.VITE_SURVEY_API_URL || "").trim() || "/api/survey";
+// 저장 API 주소 (Node 서버의 /api/survey)
+export const API_URL = "/api/survey";

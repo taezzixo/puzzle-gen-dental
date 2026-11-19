@@ -1,4 +1,4 @@
-// 응답 저장소: 서버 API(기본 /api/survey 또는 VITE_SURVEY_API_URL) 사용.
+// 응답 저장소: Node 서버의 /api/survey API 사용.
 // 서버에 연결할 수 없으면 이 브라우저(localStorage)에 임시 저장하고 그 사실을 화면에 알립니다.
 import { API_URL } from "./config.js";
 
@@ -15,7 +15,6 @@ async function call(params, body) {
   const url = new URL(API_URL, window.location.href);
   Object.entries(params || {}).forEach(([k, v]) => url.searchParams.set(k, v));
   const res = await fetch(url.toString(), body
-    // text/plain: Google Apps Script 등에서도 사전 요청(CORS preflight) 없이 동작
     ? { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(body), redirect: "follow" }
     : { method: "GET", redirect: "follow", cache: "no-store" });
   const text = await res.text();
@@ -64,7 +63,7 @@ export async function listAll(pin) {
     const { records } = await call({ action: "list", pin });
     return { records: records || [], source: "server" };
   } catch (e) {
-    if (e.code === "BAD_PIN") throw e;
+    if (e.code) throw e; // 비밀번호 오류 · 잠금
     // 서버 미연결: 이 브라우저에 남아 있는 응답만 표시
     const recs = [];
     for (let i = 1; i <= 50; i++) { const r = readLocal(i); if (r) recs.push(r); }
@@ -72,7 +71,8 @@ export async function listAll(pin) {
   }
 }
 
+// → { ok: true } 또는 { ok: false, error }
 export async function checkPin(pin) {
-  try { await call({ action: "list", pin }); return true; }
-  catch (e) { if (e.code === "BAD_PIN") return false; return true; /* 서버 미연결 시 로컬 모드 허용 */ }
+  try { await call({ action: "list", pin }); return { ok: true }; }
+  catch (e) { return e.code ? { ok: false, error: e.message } : { ok: true }; /* 서버 미연결 시 로컬 모드 허용 */ }
 }

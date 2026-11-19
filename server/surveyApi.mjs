@@ -83,7 +83,7 @@ export function createSurveyApi({ dataDir, adminPin }) {
         const out = { ...rec, evaluatorId: id, savedAt, createdAt: prev?.createdAt || rec.createdAt || savedAt, saveCount: (prev?.saveCount || 0) + 1 };
         await fs.mkdir(respDir, { recursive: true });
         await fs.mkdir(histDir, { recursive: true });
-        const tmp = fileOf(id) + ".tmp";
+        const tmp = `${fileOf(id)}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
         await fs.writeFile(tmp, JSON.stringify(out, null, 2), "utf8");
         await fs.rename(tmp, fileOf(id));
         await fs.writeFile(path.join(histDir, `evaluator-${id}-${savedAt.replace(/[:.]/g, "-")}.json`), JSON.stringify(out), "utf8");
