@@ -5,7 +5,7 @@ import {
   SATISFACTION, SAT_SCALE, AGENT_Q, FEATURES, FACTORS, emptyAnswers, normalizeAnswers,
 } from "./questions.js";
 import { STEPS, progressPct, totalMissing } from "./steps.js";
-import { loadRecord, saveRecord, listSummary } from "./storage.js";
+import { saveRecord, fetchByName, readDraft, writeDraft, clearDraft, nameKey } from "./storage.js";
 import { Choice, ChoiceGrid, Scale5, PairCompare, NumField, TextField, TextArea, Note, More, QCard, cx } from "./ui.jsx";
 
 const fmtTime = (iso) => (iso ? new Date(iso).toLocaleString("ko-KR", { month: "long", day: "numeric", hour: "numeric", minute: "2-digit" }) : "");
@@ -30,77 +30,49 @@ export function SurveyShell({ children, right }) {
   );
 }
 
-// ── 평가자 선택 화면 ─────────────────────────────
-function PickEvaluator({ onPick }) {
-  const [summary, setSummary] = useState(undefined);
-  useEffect(() => { listSummary().then(setSummary); }, []);
-  const ids = Array.from({ length: CFG.evaluatorCount }, (_, i) => i + 1);
-  const info = (id) => summary?.find((s) => s.evaluatorId === id);
-  return (
-    <main className="max-w-2xl mx-auto px-4 py-10">
-      <h1 className="text-2xl font-bold tracking-tight mb-1">평가자 번호를 선택해 주세요</h1>
-      <Note className="mb-6">안내받으신 번호를 선택하세요. 중간에 저장하면 같은 번호로 이어서 작성할 수 있습니다.</Note>
-      <div className="grid gap-2">
-        {ids.map((id) => {
-          const s = info(id);
-          return (
-            <button key={id} type="button" onClick={() => onPick(id)}
-              className="sv-btn w-full rounded-xl border border-neutral-300 hover:border-neutral-900 bg-white px-4 py-4 flex items-center gap-4 text-left">
-              <span className="w-10 h-10 rounded-lg bg-neutral-900 text-white text-lg font-semibold flex items-center justify-center shrink-0 tabular-nums">{id}</span>
-              <span className="flex-1">
-                <span className="block text-[15px] font-semibold">평가자 {id}번{s?.name ? ` · ${s.name}` : ""}</span>
-                <span className="block text-[12px] text-neutral-500 mt-0.5">
-                  {!s ? "시작 전" : s.status === "submitted" ? `제출 완료 · ${fmtTime(s.updatedAt)}` : `작성 중${s.progress != null ? ` ${s.progress}%` : ""} · ${fmtTime(s.updatedAt)} 저장`}
-                </span>
-              </span>
-              <span aria-hidden className="text-neutral-400">→</span>
-            </button>
-          );
-        })}
-      </div>
-      {summary === null && <Note className="mt-6 border border-neutral-300 rounded-lg px-3.5 py-3">저장 서버에 연결하지 못했습니다. 작성은 가능하지만 이 기기에만 저장될 수 있으니 관리자에게 알려 주세요.</Note>}
-    </main>
-  );
-}
+const freshRecord = () => ({ status: "draft", createdAt: new Date().toISOString(), step: 0, answers: emptyAnswers() });
+const CONSENT_STEP = STEPS.findIndex((s) => s.id === "consent");
 
 // ── 메인 ─────────────────────────────────────────
-export default function SurveyApp({ initialId }) {
-  const [evaluatorId, setEvaluatorId] = useState(initialId || null);
-  const [record, setRecord] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [confirmWho, setConfirmWho] = useState(null); // 기존 응답이 있을 때 본인 확인
-  const [step, setStep] = useState(0);
-  const [saveState, setSaveState] = useState(null); // {kind:'ok'|'warn'|'saving', text}
+export default function SurveyApp() {
+  // 이 브라우저에서 작성하던 응답이 있으면 이어서, 없으면 조사 안내부터 시작
+  const [record, setRecord] = useState(() => {
+    const d = readDraft();
+    return d && d.status !== "submitted" ? { ...d, answers: normalizeAnswers(d.answers) } : freshRecord();
+  });
+  const [step, setStep] = useState(() => Math.min(record?.step || 0, STEPS.length - 1));
+  const [resumed, setResumed] = useState(() => !!nameKey(record?.answers?.consent?.name));
+  const [saveState, setSaveState] = useState(null); // {kind:'ok'|'warn'|'saving'|'info', text}
   const [missingPrompt, setMissingPrompt] = useState(null);
   const [submitAsk, setSubmitAsk] = useState(false);
+  const [resumeAsk, setResumeAsk] = useState(null); // 같은 성명의 기존 응답
+  const [resetAsk, setResetAsk] = useState(false);
+  const [checking, setChecking] = useState(false); // 성명 확인 중
   const [done, setDone] = useState(false);
   const dirty = useRef(false);
 
-  const pick = async (id) => {
-    setLoading(true);
-    const { record: rec, source } = await loadRecord(id);
-    setLoading(false);
-    window.location.hash = `#/survey/${id}`;
-    if (rec) {
-      setConfirmWho({ id, rec: { ...rec, answers: normalizeAnswers(rec.answers) }, source });
-    } else {
-      setEvaluatorId(id);
-      setRecord({ evaluatorId: id, status: "draft", createdAt: new Date().toISOString(), step: 0, answers: emptyAnswers() });
-      setStep(0);
-    }
-  };
+  // 이어서 작성하는 경우, 다른 기기에서 더 최근에 저장한 내용이 있으면 서버 쪽을 사용
+  useEffect(() => {
+    const name = record?.answers?.consent?.name;
+    if (!record?.key || !nameKey(name)) return;
+    fetchByName(name).then((srv) => {
+      if (srv && srv.createdAt === record.createdAt && String(srv.savedAt || "") > String(record.savedAt || "")) {
+        setRecord({ ...srv, answers: normalizeAnswers(srv.answers) });
+        if (srv.status !== "submitted") setStep(Math.min(srv.step || 0, STEPS.length - 1));
+      }
+    }).catch(() => {});
+    // eslint-disable-next-line
+  }, []);
 
-  useEffect(() => { if (initialId) pick(initialId); /* eslint-disable-next-line */ }, []);
-
-  const A = record?.answers;
+  const A = record.answers;
   const update = (fn) => {
     dirty.current = true;
     editSeq.current += 1;
-    setRecord((r) => { const answers = structuredClone(r.answers); fn(answers); return { ...r, answers }; });
+    setRecord((r) => { const answers = structuredClone(r.answers); fn(answers); const nr = { ...r, answers }; writeDraft(nr); return nr; });
   };
 
   // 저장은 한 번에 하나씩 순서대로 보내고, 보낼 때마다 그 시점의 최신 응답을 사용합니다.
-  // 서버 응답이 오는 동안 새로 고른 답이 이전 상태로 덮이지 않도록, 돌아온 값은 저장 시각만 반영합니다.
+  // 서버 응답이 오는 동안 새로 고른 답이 이전 상태로 덮이지 않도록, 돌아온 값은 저장 정보만 반영합니다.
   const recordRef = useRef(record); recordRef.current = record;
   const stepRef = useRef(step); stepRef.current = step;
   const editSeq = useRef(0);
@@ -110,11 +82,26 @@ export default function SurveyApp({ initialId }) {
     if (!base) return null;
     const seqAtStart = editSeq.current;
     const rec = { ...base, step: opts.step ?? stepRef.current, progress: progressPct(base.answers), ...(opts.patch || {}) };
-    const r = await saveRecord(rec);
-    setRecord((cur) => ({ ...cur, ...(opts.patch || {}), step: rec.step, progress: rec.progress, updatedAt: r.record.updatedAt, savedAt: r.savedAt }));
+    const k = nameKey(rec.answers.consent?.name);
+    // 처음 쓰는 성명이면, 같은 성명으로 이미 저장된 다른 응답이 있는지 먼저 확인
+    if (k && k !== base.key) {
+      try {
+        const existing = await fetchByName(rec.answers.consent.name);
+        if (existing && existing.createdAt !== base.createdAt) {
+          writeDraft(rec);
+          setSaveState(null);
+          setResumeAsk(existing);
+          return { where: "local", reason: "conflict" };
+        }
+      } catch { /* 연결 실패 시 아래 저장에서 처리 */ }
+    }
+    const r = await saveRecord(rec, base.key && base.key !== k ? base.key : undefined);
+    setRecord((cur) => ({ ...cur, ...(opts.patch || {}), step: rec.step, progress: rec.progress, updatedAt: r.record.updatedAt, ...(r.where === "server" ? { key: r.record.key, savedAt: r.savedAt } : {}) }));
     if (r.where === "server") {
       if (editSeq.current === seqAtStart) dirty.current = false;
       if (!opts.silent) setSaveState({ kind: "ok", text: `저장되었습니다 · ${fmtTime(r.savedAt)}` }); else setSaveState(null);
+    } else if (r.reason === "no-name") {
+      if (!opts.silent) setSaveState({ kind: "info", text: "성명을 입력하면 서버에 저장됩니다. 지금은 이 기기에만 보관됩니다." });
     } else setSaveState({ kind: "warn", text: "서버에 저장하지 못해 이 기기에만 임시 저장했습니다. 잠시 후 다시 저장해 주세요." });
     return r;
   };
@@ -134,9 +121,9 @@ export default function SurveyApp({ initialId }) {
     return entry.promise;
   };
 
-  // 창을 닫을 때 저장하지 않은 내용 경고
+  // 창을 닫을 때 서버에 저장하지 않은 내용 경고
   useEffect(() => {
-    const h = (e) => { if (dirty.current) { e.preventDefault(); e.returnValue = ""; } };
+    const h = (e) => { if (dirty.current && nameKey(recordRef.current?.answers?.consent?.name)) { e.preventDefault(); e.returnValue = ""; } };
     window.addEventListener("beforeunload", h);
     return () => window.removeEventListener("beforeunload", h);
   }, []);
@@ -149,6 +136,14 @@ export default function SurveyApp({ initialId }) {
     const miss = STEPS[step].missing(A);
     if (miss > 0 && !force) { setMissingPrompt(miss); return; }
     const to = Math.min(step + 1, STEPS.length - 1);
+    // 새 성명을 입력한 동의 화면: 같은 성명의 기존 응답이 있는지 확인한 뒤 이동 (저장은 뒤에서)
+    if (step === CONSENT_STEP && nameKey(A.consent.name) && nameKey(A.consent.name) !== record.key) {
+      setChecking(true);
+      try {
+        const existing = await fetchByName(A.consent.name);
+        if (existing && existing.createdAt !== record.createdAt) { setResumeAsk(existing); return; }
+      } catch { /* 연결 실패 시 저장 단계에서 안내 */ } finally { setChecking(false); }
+    }
     if (dirty.current) doSave({ silent: true, step: to });
     goto(to);
   };
@@ -157,45 +152,54 @@ export default function SurveyApp({ initialId }) {
   const submit = async () => {
     setSubmitAsk(false);
     const r = await doSave({ patch: { status: "submitted", submittedAt: new Date().toISOString() } });
-    if (r?.where === "server") setDone(true);
+    if (r?.where === "server") { clearDraft(); setDone(true); }
   };
 
-  const shell = (content) => <SurveyShell>{content}</SurveyShell>;
+  // 같은 성명의 기존 응답을 불러와 이어서 작성
+  const continueExisting = () => {
+    const ex = resumeAsk;
+    setResumeAsk(null);
+    const rec = { ...ex, answers: normalizeAnswers(ex.answers) };
+    setRecord(rec); writeDraft(rec); dirty.current = false; setResumed(true);
+    goto(ex.status === "submitted" ? STEPS.length - 1 : Math.max(Math.min(ex.step || 0, STEPS.length - 1), CONSENT_STEP + 1));
+    setSaveState({ kind: "ok", text: `${ex.name || ex.answers?.consent?.name} 님의 이전 응답을 불러왔습니다` });
+  };
 
-  if (loading) return shell(<main className="max-w-2xl mx-auto px-4 py-20 text-center text-neutral-500">불러오는 중…</main>);
+  const startNew = () => {
+    clearDraft(); dirty.current = false;
+    const r = freshRecord();
+    setRecord(r); setResumed(false); setResetAsk(false); setDone(false); setSaveState(null);
+    goto(0);
+  };
 
-  if (confirmWho) {
-    const { id, rec } = confirmWho;
-    const name = rec.answers.consent?.name;
-    return shell(
-      <main className="max-w-2xl mx-auto px-4 py-12">
-        <h1 className="text-2xl font-bold tracking-tight mb-2">평가자 {id}번{name ? ` · ${name}` : ""} 님이 맞습니까?</h1>
-        <Note className="mb-6">{rec.status === "submitted" ? `제출한 응답이 있습니다 (${fmtTime(rec.submittedAt || rec.updatedAt)}). 내용을 확인하거나 수정할 수 있습니다.` : `작성 중인 응답이 있습니다 · ${fmtTime(rec.updatedAt)} 저장 · 진행률 ${progressPct(rec.answers)}%`}</Note>
-        <div className="grid gap-2 sm:grid-cols-2">
-          <button type="button" onClick={() => { setEvaluatorId(id); setRecord(rec); setStep(rec.status === "submitted" ? STEPS.length - 1 : Math.min(rec.step || 0, STEPS.length - 1)); setConfirmWho(null); }}
-            className={cx(btnPrimary, "py-3.5 text-[15px]")}>네, 이어서 작성</button>
-          <button type="button" onClick={() => { setConfirmWho(null); setEvaluatorId(null); window.location.hash = "#/survey"; }}
-            className={cx(btnSecondary, "py-3.5 text-[15px]")}>아니요, 다시 선택</button>
+  const myName = A.consent?.name?.trim();
+
+  if (done) return (
+    <SurveyShell>
+      <main className="max-w-2xl mx-auto px-4 py-20 text-center">
+        <div className="mx-auto w-12 h-12 rounded-full bg-neutral-900 text-white flex items-center justify-center text-xl mb-5" aria-hidden>✓</div>
+        <h1 className="text-2xl font-bold tracking-tight mb-2">제출이 완료되었습니다</h1>
+        <p className="text-[15px] text-neutral-500 mb-8">{myName ? `${myName} 님, ` : ""}소중한 의견 감사합니다.</p>
+        <div className="flex flex-col sm:flex-row gap-2 justify-center">
+          <button type="button" onClick={() => { setDone(false); goto(STEPS.length - 1); }} className={cx(btnSecondary, "px-5 py-3 text-[14px]")}>제출한 내용 보기</button>
+          <button type="button" onClick={startNew} className={cx(btnSecondary, "px-5 py-3 text-[14px]")}>다른 분 응답 새로 작성</button>
         </div>
       </main>
-    );
-  }
-
-  if (!evaluatorId || !record) return shell(<PickEvaluator onPick={pick} />);
-
-  if (done) return shell(
-    <main className="max-w-2xl mx-auto px-4 py-20 text-center">
-      <div className="mx-auto w-12 h-12 rounded-full bg-neutral-900 text-white flex items-center justify-center text-xl mb-5" aria-hidden>✓</div>
-      <h1 className="text-2xl font-bold tracking-tight mb-2">제출이 완료되었습니다</h1>
-      <p className="text-[15px] text-neutral-500 mb-8">소중한 의견 감사합니다.</p>
-      <button type="button" onClick={() => { setDone(false); goto(STEPS.length - 1); }} className={cx(btnSecondary, "px-5 py-3 text-[14px]")}>제출한 내용 보기</button>
-    </main>
+    </SurveyShell>
   );
 
   const S = STEPS[step];
 
   return (
-    <SurveyShell right={<span className="text-[12px] text-neutral-500 whitespace-nowrap">평가자 {evaluatorId}번</span>}>
+    <SurveyShell right={myName ? <span className="text-[12px] text-neutral-500 whitespace-nowrap">{myName} 님</span> : null}>
+      {resumed && myName && (
+        <div className="bg-neutral-100 border-b border-neutral-200">
+          <div className="max-w-2xl mx-auto px-4 py-2 flex items-center gap-3 text-[12px] text-neutral-600">
+            <span className="flex-1"><b className="text-neutral-900">{myName}</b> 님의 응답을 이어서 작성 중입니다.</span>
+            <button type="button" onClick={() => setResetAsk(true)} className="sv-link underline underline-offset-4 hover:text-neutral-900">본인이 아니면 새로 작성</button>
+          </div>
+        </div>
+      )}
       {/* 진행 표시 */}
       <div className="max-w-2xl mx-auto px-4 pt-6">
         <div className="flex items-center justify-between mb-2 text-[12px] text-neutral-500 tabular-nums">
@@ -221,10 +225,11 @@ export default function SurveyApp({ initialId }) {
         )}
         {S.id === "review" && (
           <div className="pt-2">
-            <button type="button" onClick={() => setSubmitAsk(true)} className={cx(btnPrimary, "w-full py-4 text-[16px]")}>
+            <button type="button" onClick={() => setSubmitAsk(true)} disabled={!nameKey(myName)} className={cx(btnPrimary, "w-full py-4 text-[16px]")}>
               {record.status === "submitted" ? "수정 내용으로 다시 제출" : "설문 제출하기"}
             </button>
-            {totalMissing(A) > 0 && <Note className="text-center mt-2">답하지 않은 문항이 있어도 제출할 수 있습니다.</Note>}
+            {!nameKey(myName) ? <Note className="text-center mt-2">제출하려면 「개인정보 수집 · 이용 동의」 단계에서 성명을 입력해 주세요.</Note>
+              : totalMissing(A) > 0 && <Note className="text-center mt-2">답하지 않은 문항이 있어도 제출할 수 있습니다.</Note>}
           </div>
         )}
       </main>
@@ -239,23 +244,40 @@ export default function SurveyApp({ initialId }) {
         <div className="max-w-2xl mx-auto px-4 py-3 grid grid-cols-[1fr_1fr_1.4fr] gap-2">
           <button type="button" onClick={prev} disabled={step === 0} className={cx(btnSecondary, "py-3 text-[14px]")}>← 이전</button>
           <button type="button" onClick={() => doSave()} className={cx(btnSecondary, "py-3 text-[14px]")}>저장</button>
-          <button type="button" onClick={() => next(false)} disabled={step === STEPS.length - 1} className={cx(btnPrimary, "py-3 text-[14px]")}>다음 →</button>
+          <button type="button" onClick={() => next(false)} disabled={step === STEPS.length - 1 || checking} className={cx(btnPrimary, "py-3 text-[14px]")}>{checking ? "확인 중…" : "다음 →"}</button>
         </div>
       </nav>
 
       {submitAsk && (
-        <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4" role="dialog" aria-modal="true">
-          <div className="bg-white rounded-xl max-w-sm w-full p-6 shadow-xl">
-            <h3 className="text-lg font-bold mb-1.5">설문을 제출할까요?</h3>
-            <p className="text-[14px] text-neutral-500 mb-5">제출 후에도 같은 번호로 들어와 수정할 수 있습니다.</p>
-            <div className="grid grid-cols-2 gap-2">
-              <button type="button" onClick={() => setSubmitAsk(false)} className={cx(btnSecondary, "py-2.5 text-[14px]")}>취소</button>
-              <button type="button" onClick={submit} className={cx(btnPrimary, "py-2.5 text-[14px]")}>제출</button>
-            </div>
-          </div>
-        </div>
+        <Modal title="설문을 제출할까요?" text="제출 후에도 같은 성명으로 다시 들어와 수정할 수 있습니다."
+          cancel="취소" onCancel={() => setSubmitAsk(false)} ok="제출" onOk={submit} />
+      )}
+      {resumeAsk && (
+        <Modal title={`「${resumeAsk.name || resumeAsk.answers?.consent?.name}」 님의 이전 응답이 있습니다`}
+          text={`${resumeAsk.status === "submitted" ? "제출 완료" : `작성 중 · 진행률 ${resumeAsk.progress ?? progressPct(normalizeAnswers(resumeAsk.answers))}%`} · ${fmtTime(resumeAsk.savedAt || resumeAsk.updatedAt)} 저장. 본인이면 이어서 작성하세요. 다른 분이라면 성명을 구분해서 입력해 주세요 (예: 홍길동A).`}
+          cancel="성명 다시 확인" onCancel={() => { setResumeAsk(null); if (step !== CONSENT_STEP) goto(CONSENT_STEP); }}
+          ok="이어서 작성" onOk={continueExisting} />
+      )}
+      {resetAsk && (
+        <Modal title="새로 작성할까요?" text="이 기기에서 작성 중이던 화면을 비우고 처음부터 시작합니다. 이미 서버에 저장된 응답은 지워지지 않으며, 같은 성명을 입력하면 다시 불러올 수 있습니다."
+          cancel="취소" onCancel={() => setResetAsk(false)} ok="새로 작성" onOk={startNew} />
       )}
     </SurveyShell>
+  );
+}
+
+function Modal({ title, text, cancel, onCancel, ok, onOk }) {
+  return (
+    <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+      <div className="bg-white rounded-xl max-w-sm w-full p-6 shadow-xl">
+        <h3 className="text-lg font-bold mb-1.5 leading-snug">{title}</h3>
+        <p className="text-[14px] text-neutral-500 mb-5 leading-relaxed">{text}</p>
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" onClick={onCancel} className={cx(btnSecondary, "py-2.5 text-[14px]")}>{cancel}</button>
+          <button type="button" onClick={onOk} className={cx(btnPrimary, "py-2.5 text-[14px]")}>{ok}</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -288,7 +310,7 @@ function Intro() {
       <QCard title="진행 방법">
         <ol className="space-y-2 text-[14px] text-neutral-700">
           <li className="flex gap-3"><span className="font-semibold text-neutral-900 w-4">1</span><span>한 화면씩 답하고 <b className="text-neutral-900">다음 →</b>을 누릅니다.</span></li>
-          <li className="flex gap-3"><span className="font-semibold text-neutral-900 w-4">2</span><span><b className="text-neutral-900">저장</b>을 누르면 저장되고, 나중에 이어서 작성할 수 있습니다.</span></li>
+          <li className="flex gap-3"><span className="font-semibold text-neutral-900 w-4">2</span><span>다음 단계에서 입력한 <b className="text-neutral-900">성명</b>으로 응답이 저장됩니다. 나중에 같은 성명으로 이어서 작성할 수 있습니다.</span></li>
           <li className="flex gap-3"><span className="font-semibold text-neutral-900 w-4">3</span><span>마지막 화면에서 <b className="text-neutral-900">설문 제출하기</b>를 누르면 끝납니다.</span></li>
         </ol>
       </QCard>
@@ -319,6 +341,7 @@ function Consent({ A, update }) {
           <TextField label="소속기관" value={c.org} onChange={(v) => update((a) => { a.consent.org = v; })} />
           <TextField label="진료과목" value={c.dept} onChange={(v) => update((a) => { a.consent.dept = v; })} />
           <TextField label="성명" value={c.name} onChange={(v) => update((a) => { a.consent.name = v; })} />
+          <Note>응답은 성명 기준으로 저장됩니다. 다른 기기에서도 같은 성명을 입력하면 이어서 작성할 수 있습니다.</Note>
           <Choice multi selected={c.signed} onClick={() => update((a) => { a.consent.signed = !a.consent.signed; a.consent.signedAt = new Date().toISOString(); })}>
             위 내용을 이해하였으며, 위와 같이 동의합니다. (서명)
           </Choice>

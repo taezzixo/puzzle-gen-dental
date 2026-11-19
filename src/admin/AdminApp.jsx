@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { SURVEY_CONFIG as CFG, API_URL } from "../survey/config.js";
-import { listAll, checkPin } from "../survey/storage.js";
+import { listAll, checkPin, deleteRecord } from "../survey/storage.js";
 import { progressPct } from "../survey/steps.js";
 import { normalizeRecord } from "../survey/questions.js";
 import { buildReport } from "./reportModel.js";
@@ -54,7 +54,7 @@ function ResponseModal({ rec, onClose, onWord }) {
         <div className="sticky top-0 bg-white rounded-t-2xl border-b px-5 py-3 flex items-center gap-2">
           <div className="flex-1">
             <div className="text-xs text-neutral-500">원본 응답</div>
-            <div className="text-lg font-bold">평가자 {rec.evaluatorId}번 · {rec.answers?.consent?.name || "(성명 미기재)"}</div>
+            <div className="text-lg font-bold">{rec.name || rec.answers?.consent?.name || "(성명 미기재)"}</div>
           </div>
           <Btn kind="word" onClick={onWord}>Word 응답지</Btn>
           <Btn onClick={onClose}>닫기</Btn>
@@ -99,7 +99,7 @@ export default function AdminApp() {
   };
   useEffect(() => { if (pin) load(pin); /* eslint-disable-next-line */ }, []);
 
-  const records = useMemo(() => (data?.records || []).filter((r) => r && r.evaluatorId).map(normalizeRecord), [data]);
+  const records = useMemo(() => (data?.records || []).filter((r) => r && (r.key || r.answers?.consent?.name)).map(normalizeRecord), [data]);
   const reportRecs = useMemo(() => records.filter((r) => includeDrafts || r.status === "submitted"), [records, includeDrafts]);
   const report = useMemo(() => buildReport(reportRecs, { includeDrafts }), [reportRecs, includeDrafts]);
   const reportName = `[사용성평가 보고서] PuzzleGEN_${stamp()}`;
@@ -116,13 +116,16 @@ export default function AdminApp() {
   };
   const wordReport = () => run("Word 보고서", async () => { const { exportReportDocx } = await import("./exportDocx.js"); await exportReportDocx(report.blocks, `${reportName}.docx`); });
   const pdfReport = () => run("PDF 보고서", async () => { const { exportReportPdf } = await import("./exportPdf.js"); await exportReportPdf(report.blocks, `${reportName}.pdf`, (i, n) => setBusy(`PDF 보고서 (${i}/${n}쪽)`)); });
-  const wordResp = (rec) => run("응답지", async () => { const { exportResponseDocx } = await import("./exportDocx.js"); await exportResponseDocx(rec, `[응답지] 평가자${rec.evaluatorId}_${rec.answers?.consent?.name || "미기재"}_${stamp()}.docx`); });
-  const jsonResp = (rec) => saveText(JSON.stringify(rec, null, 2), `[원본] 평가자${rec.evaluatorId}_${stamp()}.json`, "application/json");
+  const nm = (rec) => rec.name || rec.answers?.consent?.name || "미기재";
+  const wordResp = (rec) => run("응답지", async () => { const { exportResponseDocx } = await import("./exportDocx.js"); await exportResponseDocx(rec, `[응답지] ${nm(rec)}_${stamp()}.docx`); });
+  const jsonResp = (rec) => saveText(JSON.stringify(rec, null, 2), `[원본] ${nm(rec)}_${stamp()}.json`, "application/json");
+  const delResp = (rec) => {
+    if (!window.confirm(`「${nm(rec)}」 님의 응답을 삭제할까요?\n삭제하면 목록과 보고서에서 빠집니다. (저장 이력은 서버에 남습니다)`)) return;
+    run("삭제", async () => { await deleteRecord(rec.key || nm(rec), pin); await load(); });
+  };
   const allCsv = () => saveText(toCsv(records), `[원자료] PuzzleGEN_사용성평가_전체_${stamp()}.csv`, "text/csv;charset=utf-8");
   const allJson = () => saveText(JSON.stringify(records, null, 2), `[원본] PuzzleGEN_사용성평가_전체_${stamp()}.json`, "application/json");
 
-  const ids = Array.from({ length: CFG.evaluatorCount }, (_, i) => i + 1);
-  const extra = records.filter((r) => r.evaluatorId > CFG.evaluatorCount).map((r) => r.evaluatorId);
   const submitted = records.filter((r) => r.status === "submitted").length;
 
   return (
@@ -147,38 +150,39 @@ export default function AdminApp() {
         )}
         {err && <div className="rounded-lg bg-neutral-900 text-white text-sm px-4 py-3">{err}</div>}
 
-        {/* 평가자 현황 */}
+        {/* 응답자 현황 (성명 기준) */}
         <section className="bg-white rounded-xl border border-neutral-200 p-5">
           <div className="flex flex-wrap items-end gap-3 mb-4">
             <div className="flex-1">
-              <h2 className="text-lg font-bold">평가자 응답 현황</h2>
-              <p className="text-sm text-neutral-500">제출 완료 {submitted}명 · 작성 중 {records.length - submitted}명 · 미시작 {Math.max(0, CFG.evaluatorCount - records.filter((r) => r.evaluatorId <= CFG.evaluatorCount).length)}명</p>
+              <h2 className="text-lg font-bold">응답자 현황</h2>
+              <p className="text-sm text-neutral-500">응답자 {records.length}명 (목표 {CFG.evaluatorCount}명) · 제출 완료 {submitted}명 · 작성 중 {records.length - submitted}명</p>
             </div>
             <Btn onClick={allCsv} disabled={!records.length}>전체 원자료 (엑셀 CSV)</Btn>
             <Btn onClick={allJson} disabled={!records.length}>전체 원본 (JSON)</Btn>
           </div>
+          {!records.length && <p className="text-sm text-neutral-500 py-6 text-center border border-dashed border-neutral-300 rounded-lg">아직 응답이 없습니다. 평가자가 설문에서 성명을 입력하면 이곳에 표시됩니다.</p>}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {[...ids, ...extra].map((id) => {
-              const r = records.find((x) => x.evaluatorId === id);
-              const pct = r ? r.progress ?? progressPct(r.answers) : 0;
+            {records.map((r, i) => {
+              const pct = r.progress ?? progressPct(r.answers);
               return (
-                <div key={id} className="rounded-xl border border-neutral-200 p-4">
+                <div key={r.key || i} className="rounded-xl border border-neutral-200 p-4">
                   <div className="flex items-center gap-3 mb-2">
-                    <span className="w-10 h-10 rounded-lg bg-neutral-900 text-white font-semibold flex items-center justify-center">{id}</span>
+                    <span className="w-10 h-10 rounded-lg bg-neutral-900 text-white font-semibold flex items-center justify-center tabular-nums">{i + 1}</span>
                     <div className="flex-1 min-w-0">
-                      <div className="font-bold truncate">{r?.answers?.consent?.name || `평가자 ${id}번`}</div>
-                      <div className="text-xs text-neutral-500 truncate">{r?.answers?.consent?.org || ""}</div>
+                      <div className="font-bold truncate">{nm(r)}</div>
+                      <div className="text-xs text-neutral-500 truncate">{[r.answers?.consent?.org, r.answers?.consent?.dept].filter(Boolean).join(" · ")}</div>
                     </div>
-                    <span className={`text-xs font-bold px-2 py-1 rounded-full ${!r ? "bg-neutral-50 text-neutral-500" : r.status === "submitted" ? "bg-neutral-900 text-white" : "border border-neutral-900 text-neutral-900"}`}>
-                      {!r ? "미시작" : r.status === "submitted" ? "제출 완료" : "작성 중"}
+                    <span className={`text-xs font-bold px-2 py-1 rounded-full ${r.status === "submitted" ? "bg-neutral-900 text-white" : "border border-neutral-900 text-neutral-900"}`}>
+                      {r.status === "submitted" ? "제출 완료" : "작성 중"}
                     </span>
                   </div>
-                  <div className="h-2 rounded-full bg-neutral-50 overflow-hidden mb-1.5"><div className="h-full bg-neutral-900" style={{ width: `${pct}%` }} /></div>
-                  <div className="text-xs text-neutral-500 mb-3">진행률 {pct}%{r ? ` · 마지막 저장 ${fmtDT(r.savedAt || r.updatedAt)}` : ""}</div>
+                  <div className="h-2 rounded-full bg-neutral-100 overflow-hidden mb-1.5"><div className="h-full bg-neutral-900" style={{ width: `${pct}%` }} /></div>
+                  <div className="text-xs text-neutral-500 mb-3">진행률 {pct}% · 마지막 저장 {fmtDT(r.savedAt || r.updatedAt)}</div>
                   <div className="flex flex-wrap gap-1.5">
-                    <Btn onClick={() => setView(r)} disabled={!r}>응답 보기</Btn>
-                    <Btn kind="word" onClick={() => wordResp(r)} disabled={!r || !!busy}>응답지 Word</Btn>
-                    <Btn onClick={() => jsonResp(r)} disabled={!r}>JSON</Btn>
+                    <Btn onClick={() => setView(r)}>응답 보기</Btn>
+                    <Btn kind="word" onClick={() => wordResp(r)} disabled={!!busy}>응답지 Word</Btn>
+                    <Btn onClick={() => jsonResp(r)}>JSON</Btn>
+                    <Btn onClick={() => delResp(r)} disabled={!!busy || data?.source === "local"} className="ml-auto">삭제</Btn>
                   </div>
                 </div>
               );

@@ -7,7 +7,6 @@ import './survey/survey.css'
 
 // 해시 라우팅 — 서버 설정 없이 어디에 배포해도 동작
 //   #/survey      사용성 평가 (평가자)
-//   #/survey/3    평가자 3번 바로 시작
 //   #/admin       관리자 모드
 //   그 외          PuzzleGen Dental PoC 데모
 const parse = () => {
@@ -26,7 +25,7 @@ function Router() {
   useEffect(() => {
     document.title = route.page === 'survey' ? 'PuzzleGen Dental 사용성 평가' : route.page === 'admin' ? '사용성 평가 관리자' : 'Puzzle Gen Dental'
   }, [route.page])
-  if (route.page === 'survey') return <SurveyApp key="survey" initialId={route.id} />
+  if (route.page === 'survey') return <SurveyApp key="survey" />
   if (route.page === 'admin') return <AdminApp />
   return <App />
 }

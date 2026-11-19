@@ -15,7 +15,7 @@ export function responseSections(rec) {
   const S = [];
   S.push({
     title: "응답 정보", rows: [
-      ["평가자 번호", `${rec.evaluatorId}번`],
+      ["성명", rec.name || rec.answers?.consent?.name || ""],
       ["상태", rec.status === "submitted" ? "제출 완료" : "작성 중"],
       ["진행률", `${rec.progress ?? progressPct(a)}%`],
       ["최초 작성", fmtDT(rec.createdAt)],

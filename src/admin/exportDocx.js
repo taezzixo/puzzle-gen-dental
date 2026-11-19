@@ -150,7 +150,7 @@ const REPORT_MARGIN = { top: 1300, bottom: 1200, left: 1250, right: 1250 };
 export async function exportResponseDocx(rec, filename, { title } = {}) {
   const children = [
     new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 120 }, children: [run(title || "PuzzleGen Dental 사용성 평가 응답지", { size: 34, bold: true, color: "1F3D7A" })] }),
-    new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 360 }, children: [run(`평가자 ${rec.evaluatorId}번 · ${rec.answers?.consent?.name || "(성명 미기재)"}`, { size: 24 })] }),
+    new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 360 }, children: [run(`${rec.name || rec.answers?.consent?.name || "(성명 미기재)"}${rec.answers?.consent?.org ? " · " + rec.answers.consent.org : ""}`, { size: 24 })] }),
   ];
   for (const s of responseSections(rec)) {
     children.push(new Paragraph({ spacing: { before: 280, after: 100 }, keepNext: true, shading: { type: ShadingType.CLEAR, color: "auto", fill: "E3EFD6" }, children: [run(s.title, { bold: true, size: 23 })] }));
