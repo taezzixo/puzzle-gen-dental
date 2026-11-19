@@ -290,6 +290,7 @@ export default function App() {
           <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center"><Stethoscope size={20} /></div>
           <div><h1 className="font-bold text-sm tracking-tight">Puzzle Gen Dental</h1><p className="text-[10px] text-slate-400">멀티모달 생성형 EMR 차팅 에이전트 · PoC</p></div>
         </div>
+        <a href="#/survey" className="ml-auto mr-3 text-xs font-semibold bg-amber-400 hover:bg-amber-300 text-slate-900 px-3 py-1.5 rounded-lg">사용성 평가 참여</a>
         <div className="flex bg-slate-800 rounded-lg p-0.5">
           {[1, 2].map((s) => <button key={s} onClick={() => switchStage(s)} className={`px-3 py-1 rounded-md text-xs font-semibold transition ${stage === s ? "bg-cyan-500 text-white" : "text-slate-400 hover:text-white"}`}>{s}단계{s === 1 ? " MVP" : " SaMD"}</button>)}
         </div>

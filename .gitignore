@@ -1,0 +1,6 @@
+node_modules/
+dist/
+# 설문 응답 원자료 (서버 저장소) — 개인정보 포함, 커밋 금지
+data/
+.env
+.env.local
