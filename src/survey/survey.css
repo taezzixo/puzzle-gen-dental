@@ -2,12 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 클릭 가능한 요소: 키보드 이동 시에도 뚜렷한 노란 테두리 */
+/* 클릭 가능한 요소: 키보드 이동 시 검정 테두리 */
 .sv-btn:focus-visible, .sv-input:focus-visible, .sv-link:focus-visible {
-  outline: 4px solid #f59e0b;
-  outline-offset: 3px;
+  outline: 2px solid #171717;
+  outline-offset: 2px;
 }
-.sv-input:focus { outline: 4px solid #f59e0b; outline-offset: 2px; }
+.sv-input:focus { outline: none; border-color: #171717; box-shadow: 0 0 0 1px #171717; }
 .sv-btn { cursor: pointer; -webkit-tap-highlight-color: transparent; }
-.sv-btn:active:not(:disabled) { transform: translateY(1px); }
+.sv-btn { transition: background-color .12s, border-color .12s, color .12s; }
 .sv-root { -webkit-text-size-adjust: 100%; word-break: keep-all; overflow-wrap: anywhere; }

@@ -73,13 +73,6 @@ export const INTENSITY = [
 ];
 
 // ── 2-나-1). 절대평가 L-1 ~ L-8 ─────────────────────
-const pct = (n, d) => (d > 0 ? (n / d) * 100 : null);
-const reduction = (b, a) => (b > 0 ? ((b - a) / b) * 100 : null);
-const num = (v) => (v === "" || v == null || isNaN(Number(v)) ? null : Number(v));
-const bandUp = (v, cuts) => { // cuts: [2점 하한, 3점 하한, 4점 하한, 5점 하한], 경계값은 상위 점수
-  if (v == null) return null;
-  let s = 1; cuts.forEach((c, i) => { if (v >= c) s = i + 2; }); return s;
-};
 
 export const SCALE5 = ["매우 낮음", "낮음", "보통", "높음", "매우 높음"];
 
@@ -92,9 +85,6 @@ export const ABS_ITEMS = [
     method: "체험한 시험 시나리오 9건의 입력 음성 · 파노라마 X선과 솔루션이 생성한 기록 · 판독 결과를 비교하여, 사실과 다른 내용이 1개 이상 있는 건수를 집계",
     criteria: ["오류율 45% 초과 (5건 이상)", "25% 초과 ~ 45% 이하 (3~4건)", "15% 초과 ~ 25% 이하 (2건)", "0% 초과 ~ 15% 이하 (1건)", "오류율 0% (0건)"],
     features: ["치아번호 FDI 2자리 표기 인식 · 반영", "파노라마 X선 판독(치아번호 · 결손치 · 임플란트 · 매복치 식별) 결과 제시", "판독 결과 시각 표시(히트맵 오버레이)"],
-    inputs: [{ id: "errors", label: "오류가 있었던 기록 건수", unit: "건 (9건 중)" }],
-    calc: (m) => { const e = num(m.errors); if (e == null) return null; const r = pct(e, 9); return { value: r, text: `오류율 ${r.toFixed(1)}%`, score: r === 0 ? 5 : r <= 15 ? 4 : r <= 25 ? 3 : r <= 45 ? 2 : 1 }; },
-    measureLabel: "사실 오류율(%)",
   },
   {
     id: "L2", no: "L-2", cat: "A", sub: "A2", name: "진료기록 완결성",
@@ -104,21 +94,15 @@ export const ABS_ITEMS = [
     method: "체험한 시나리오마다 필수 항목의 포함 여부를 기록 화면에서 확인하여 평균 충족률 산출",
     criteria: ["충족률 30% 미만", "30% 이상 ~ 50% 미만", "50% 이상 ~ 70% 미만", "70% 이상 ~ 90% 미만", "충족률 90% 이상"],
     features: ["초진 · 재진 · 경과기록 유형별 항목 구조에 맞춘 자동 분류 · 기록 초안 생성", "서술형 · SOAP 형식 기록 초안 제공", "표준 기호 · 용어 변환(치식 · 치과 용어)", "음성 수정 · 추가 명령으로 누락 항목 보완"],
-    inputs: [{ id: "rate", label: "평균 충족률", unit: "%" }],
-    calc: (m) => { const r = num(m.rate); if (r == null) return null; return { value: r, text: `충족률 ${r}%`, score: bandUp(r, [30, 50, 70, 90]) }; },
-    measureLabel: "입력 항목 충족률(%)",
   },
   {
     id: "L3", no: "L-3", cat: "B", sub: "B1", name: "기록 완료 시간 단축",
-    question: "평소보다 기록 작성 시간이 얼마나 줄었습니까?",
-    metric: "기록 작성 시간 단축률(%) = (Before 평균 작성시간 − After 평균 작성시간) ÷ Before × 100",
-    metricNote: "Before : 평소 EMR 수기 입력으로 동일 유형 기록을 작성하는 데 걸리는 시간(경험 기준) / After : 음성 입력 ~ 기록 확정까지 소요시간(POC 체험 실측)",
-    method: "체험 시나리오 기록 1건당 After 시간을 직접 측정하고, 동일 유형 기록의 평소 작성시간(Before)과 비교하여 평균 단축률 산출",
-    criteria: ["단축률 10% 미만 (또는 증가)", "10% 이상 ~ 30% 미만", "30% 이상 ~ 50% 미만", "50% 이상 ~ 70% 미만", "단축률 70% 이상"],
+    question: "평소 기록 작성 시간이 얼마나 줄어들 것 같습니까?",
+    metric: "예상 기록 작성 시간 단축률(%) = (평소 작성시간 − PuzzleGen 사용 시 예상 작성시간) ÷ 평소 작성시간 × 100",
+    metricNote: "평소 : EMR 수기 입력으로 기록 1건을 작성하는 시간(경험 기준) / PuzzleGen 사용 시 : 음성 입력 ~ 기록 확정까지 예상 시간(POC 체험 기준)",
+    method: "POC 체험을 바탕으로, 평소 기록 작성 시간 대비 얼마나 줄어들지 예상하여 해당 구간을 선택",
+    criteria: ["단축률 5% 미만 (또는 증가)", "5% 이상 ~ 15% 미만", "15% 이상 ~ 30% 미만", "30% 이상 ~ 50% 미만", "단축률 50% 이상"],
     features: ["음성 인식 결과 실시간 표시 및 기록 초안 자동 생성", "기록 초안 미리보기 · 원클릭 확정", "변경 이력(수정 전 · 후) 기록"],
-    inputs: [{ id: "before", label: "평소 기록 1건 작성 시간", unit: "분" }, { id: "after", label: "PuzzleGen 체험 시 작성 시간", unit: "분" }],
-    calc: (m) => { const b = num(m.before), a = num(m.after); if (b == null || a == null || b <= 0) return null; const r = reduction(b, a); return { value: r, text: `단축률 ${r.toFixed(1)}%`, score: bandUp(r, [10, 30, 50, 70]) }; },
-    measureLabel: "기록 작성 시간 단축률(%)",
   },
   {
     id: "L4", no: "L-4", cat: "B", sub: "B2", name: "재입력 · 추가입력 감소",
@@ -127,9 +111,6 @@ export const ABS_ITEMS = [
     method: "체험한 시나리오마다 생성된 기록 초안을 수정(음성 수정 명령, 직접 입력, 항목 보완) 없이 확정했는지 확인하여 건수 집계",
     criteria: ["확정률 30% 미만 (0~2건)", "30% 이상 ~ 50% 미만 (3~4건)", "50% 이상 ~ 70% 미만 (5~6건)", "70% 이상 ~ 90% 미만 (7~8건)", "확정률 90% 이상 (9건)"],
     features: ["음성 명령으로 수정 · 삭제 · 추가 · 확정(의도 분류)", "수정 내용 차트 즉시 반영 및 변경 이력 기록"],
-    inputs: [{ id: "count", label: "수정 없이 확정한 기록 건수", unit: "건 (9건 중)" }],
-    calc: (m) => { const c = num(m.count); if (c == null) return null; const r = pct(c, 9); return { value: r, text: `무수정 확정률 ${r.toFixed(1)}%`, score: bandUp(r, [30, 50, 70, 90]) }; },
-    measureLabel: "무수정 확정률(%)",
   },
   {
     id: "L5", no: "L-5", cat: "C", sub: "C1", name: "진료 중 인지부하 감소",
@@ -139,9 +120,6 @@ export const ABS_ITEMS = [
     method: "평소 환자 1명 진료 중 기록 전환 횟수(Before)와, 체험 결과를 근거로 실제 EMR 적용 시 예상되는 횟수(After)를 각각 기재하여 감소율 산출",
     criteria: ["감소율 10% 미만 (또는 증가)", "10% 이상 ~ 30% 미만", "30% 이상 ~ 50% 미만", "50% 이상 ~ 70% 미만", "감소율 70% 이상 (기록 전환 거의 없음)"],
     features: ["기록 초안 자동 생성(빈 화면에서 시작하지 않음)", "음성 명령으로 수정 · 확정", "발화 중 실시간 인식 결과 표시"],
-    inputs: [{ id: "before", label: "평소 환자 1명당 기록 전환 횟수", unit: "회" }, { id: "after", label: "적용 시 예상 횟수", unit: "회" }],
-    calc: (m) => { const b = num(m.before), a = num(m.after); if (b == null || a == null || b <= 0) return null; const r = reduction(b, a); return { value: r, text: `감소율 ${r.toFixed(1)}%`, score: bandUp(r, [10, 30, 50, 70]) }; },
-    measureLabel: "기록 전환 횟수 감소율(%)",
   },
   {
     id: "L6", no: "L-6", cat: "C", sub: "C2", name: "신체 피로 · 번아웃 감소",
@@ -150,9 +128,6 @@ export const ABS_ITEMS = [
     method: "평소 1일 진료 종료 후 기록 정리에 소요되는 시간(Before)과, 체험 결과를 근거로 실제 EMR 적용 시 예상되는 시간(After)을 각각 기재하여 감소율 산출",
     criteria: ["감소율 10% 미만 (또는 증가)", "10% 이상 ~ 30% 미만", "30% 이상 ~ 50% 미만", "50% 이상 ~ 70% 미만", "감소율 70% 이상 (또는 잔여 차팅 10분 이내)"],
     features: ["음성 입력으로 기록 초안 일괄 생성", "기록 초안 미리보기 후 일괄 확정(원클릭 확정)"],
-    inputs: [{ id: "before", label: "평소 하루 진료 후 기록 정리 시간", unit: "분" }, { id: "after", label: "적용 시 예상 시간", unit: "분" }],
-    calc: (m) => { const b = num(m.before), a = num(m.after); if (b == null || a == null || b <= 0) return null; const r = reduction(b, a); const s = a <= 10 ? 5 : bandUp(r, [10, 30, 50, 70]); return { value: r, text: `감소율 ${r.toFixed(1)}%${a <= 10 ? " · 잔여 10분 이내" : ""}`, score: s }; },
-    measureLabel: "잔여 차팅 시간 감소율(%)",
   },
   {
     id: "L7", no: "L-7", cat: "D", sub: "D1", name: "기존 진료흐름 적합성",
@@ -162,9 +137,6 @@ export const ABS_ITEMS = [
     method: "체험 시나리오 기록 1건당 조작 단계 수를 세어 평균 산출하고, 기존 초진 · 재진 · 경과기록 작성 흐름의 변경 필요 여부 확인",
     criteria: ["9단계 초과 또는 기존 진료흐름 변경 필요", "7단계 초과 ~ 9단계 이하", "5단계 초과 ~ 7단계 이하", "3단계 초과 ~ 5단계 이하", "3단계 이하 (흐름 변경 없음)"],
     features: ["초진 · 재진 · 경과기록 3종 기록 유형 지원", "서술형 · SOAP 등 기존 기록 형식에 맞춘 초안 제공", "파노라마 X선 업로드 · 판독 결과를 기록과 함께 확인", "치아 선택 시 과거 이력(타임라인) 조회"],
-    inputs: [{ id: "steps", label: "기록 1건당 평균 조작 단계 수", unit: "단계" }, { id: "flowChange", label: "기존 진료흐름 변경이 필요합니까?", type: "yesno" }],
-    calc: (m) => { const s = num(m.steps); if (s == null) return null; const change = m.flowChange === "yes"; const score = change || s > 9 ? 1 : s > 7 ? 2 : s > 5 ? 3 : s > 3 ? 4 : 5; return { value: s, text: `${s}단계${change ? " · 흐름 변경 필요" : ""}`, score }; },
-    measureLabel: "조작 단계 수(단계)",
   },
   {
     id: "L8", no: "L-8", cat: "D", sub: "D2", name: "현장 통합 예측성",
@@ -173,9 +145,6 @@ export const ABS_ITEMS = [
     method: "평소 1일 작성하는 진료기록 건수를 기준으로, 체험 결과에 비추어 PuzzleGen Dental로 작성 · 확정할 수 있다고 판단되는 건수를 기재하여 비율 산출",
     criteria: ["적용 비율 20% 미만 (일부 업무에 제한적 적용)", "20% 이상 ~ 40% 미만", "40% 이상 ~ 60% 미만", "60% 이상 ~ 80% 미만", "적용 비율 80% 이상 (대부분의 기록 업무)"],
     features: ["초진 · 재진 · 경과기록 3종 기록 유형 지원", "음성 입력 기반 기록 초안 자동 생성 · 확정", "파노라마 X선 판독(치아번호 · 결손치 · 임플란트 · 매복치) 결과 제공", "웹 브라우저 기반 접속(시험 링크)"],
-    inputs: [{ id: "total", label: "평소 하루 전체 기록 건수", unit: "건" }, { id: "applicable", label: "PuzzleGen으로 작성 가능한 건수", unit: "건" }],
-    calc: (m) => { const t = num(m.total), a = num(m.applicable); if (t == null || a == null || t <= 0) return null; const r = pct(a, t); return { value: r, text: `적용 비율 ${r.toFixed(1)}%`, score: bandUp(r, [20, 40, 60, 80]) }; },
-    measureLabel: "업무 적용 가능 비율(%)",
   },
 ];
 
@@ -218,7 +187,6 @@ export const FEATURES = [
   "현재 기능만으로 충분",
 ];
 
-export const INTENT_SCALE = ["전혀 없음", "없음", "보통", "있음", "매우 있음"];
 export const FACTORS = ["인식 · 판독 정확도", "시간 절감 효과", "EMR 연동", "비용", "보안 · 책임", "스탭 · 환자 수용성", "교육 · 지원", "기타"];
 
 // 빈 응답 구조
@@ -235,7 +203,7 @@ export const emptyAnswers = () => ({
   satisfaction: {},
   agent: {},
   features: { selected: [], top: "", etc: "" },
-  overall: { intent: null, factor: "", factorEtc: "", comment: "" },
+  overall: { factor: "", factorEtc: "", comment: "" },
 });
 
 // 쌍대비교 응답 → 표기 문자열 (예: "업무효과성 쪽 5 (더 중요)")

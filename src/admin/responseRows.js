@@ -1,7 +1,7 @@
 // 평가자 1명의 응답 → 문항/응답 표 (관리자 화면 · 개인 응답지 Word · CSV 공용)
 import {
-  CONSENT_ITEMS, BASIC, CATEGORIES, SUBITEMS, MAIN_PAIRS, SUB_PAIRS, ABS_ITEMS, SCALE5, QUANT, SATISFACTION, SAT_SCALE,
-  AGENT_Q, INTENT_SCALE, catName, subName, pairText,
+  CONSENT_ITEMS, BASIC, SUBITEMS, MAIN_PAIRS, SUB_PAIRS, ABS_ITEMS, SCALE5, QUANT, SATISFACTION, SAT_SCALE,
+  AGENT_Q, catName, subName, pairText,
 } from "../survey/questions.js";
 import { progressPct } from "../survey/steps.js";
 
@@ -54,19 +54,7 @@ export function responseSections(rec) {
     }),
   });
   S.push({
-    title: "2-나-1) 전반적인 사용성 평가 (5점 척도)", rows: CATEGORIES.flatMap((cat) => [
-      ...ABS_ITEMS.filter((i) => i.cat === cat.id).flatMap((it) => {
-        const ans = a.abs?.[it.id] || {};
-        const m = ans.m || {};
-        const calc = it.calc(m);
-        const mText = it.inputs.map((inp) => (m[inp.id] !== undefined && m[inp.id] !== "" ? `${inp.label}: ${inp.type === "yesno" ? (m[inp.id] === "yes" ? "예" : "아니요") : m[inp.id] + (inp.unit ? " " + inp.unit.split(" ")[0] : "")}` : null)).filter(Boolean).join(" / ");
-        return [
-          [`${it.no} ${it.name}(${it.sub})`, scoreText(ans.score, SCALE5)],
-          [`${it.no} 측정값`, mText ? `${mText}${calc ? ` → ${calc.text} (${calc.score}점 구간)` : ""}` : ""],
-        ];
-      }),
-      [`「${cat.name}」 측정값 · 비고`, v(a.absNote?.[cat.id])],
-    ]),
+    title: "2-나-1) 전반적인 사용성 평가 (5점 척도)", rows: ABS_ITEMS.map((it) => [`${it.no} ${it.name}(${it.sub})`, scoreText(a.abs?.[it.id]?.score, SCALE5)]),
   });
   S.push({
     title: "2-나-2) 솔루션 적용으로 인한 정량 성과 (예상)", rows: QUANT.map((q, i) => {
@@ -89,7 +77,6 @@ export function responseSections(rec) {
   const o = a.overall || {};
   S.push({
     title: "3-라. 종합 평가", rows: [
-      ["실제 EMR 적용 시 사용 의향", scoreText(o.intent, INTENT_SCALE)],
       ["도입 · 확산 결정 시 가장 중요한 요인", v(o.factor) + (o.factorEtc ? ` (기타: ${o.factorEtc})` : "")],
       ["기타 의견", v(o.comment)],
     ],

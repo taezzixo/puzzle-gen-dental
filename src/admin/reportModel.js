@@ -3,7 +3,7 @@
 import { SURVEY_CONFIG as CFG } from "../survey/config.js";
 import {
   BASIC, CATEGORIES, SUBITEMS, ALL_SUBITEMS, ABS_ITEMS, SCALE5, QUANT, SATISFACTION, SAT_SCALE, AGENT_Q, FEATURES,
-  INTENT_SCALE, FACTORS, catName, subName,
+  FACTORS, catName, subName,
 } from "../survey/questions.js";
 import { computeAhp } from "./ahp.js";
 import { barChart, pieChart, groupedBar, hBarChart } from "./charts.js";
@@ -49,8 +49,7 @@ export function computeStats(records) {
   const abs = {};
   ABS_ITEMS.forEach((it) => {
     const scores = R.map((a) => a.abs?.[it.id]?.score).filter(isNum);
-    const measures = R.map((a) => it.calc(a.abs?.[it.id]?.m || {})).filter(Boolean).map((c) => c.value);
-    abs[it.id] = { ...scoreDist(scores), measureMean: mean(measures), measureN: measures.length };
+    abs[it.id] = scoreDist(scores);
   });
   const cat = {};
   CATEGORIES.forEach((c) => { cat[c.id] = mean(ABS_ITEMS.filter((i) => i.cat === c.id).map((i) => abs[i.id].mean)); });
@@ -69,18 +68,16 @@ export function computeStats(records) {
   const sat = {}; SATISFACTION.forEach((s) => { sat[s.id] = scoreDist(R.map((a) => a.satisfaction?.[s.id]).filter(isNum)); });
   const agent = {}; AGENT_Q.forEach((q) => { agent[q.id] = scoreDist(R.map((a) => a.agent?.[q.id]).filter(isNum)); });
   const features = FEATURES.map((f) => ({ label: f, value: R.filter((a) => a.features?.selected?.includes(f)).length, top: R.filter((a) => a.features?.top === f).length }));
-  const intent = scoreDist(R.map((a) => a.overall?.intent).filter(isNum));
   const factors = countBy(R.map((a) => a.overall?.factor), FACTORS);
 
   const texts = {
     reasons: records.map((r, i) => ({ who: `응답자 ${i + 1}`, top: catName(r.answers.mainTop || ""), text: r.answers.mainReason })).filter((x) => x.text?.trim()),
-    notes: records.flatMap((r, i) => CATEGORIES.map((c) => ({ who: `응답자 ${i + 1}`, cat: c.name, text: r.answers.absNote?.[c.id] }))).filter((x) => x.text?.trim()),
     comments: records.map((r, i) => ({ who: `응답자 ${i + 1}`, text: r.answers.overall?.comment })).filter((x) => x.text?.trim()),
     etc: records.flatMap((r, i) => [r.answers.features?.etc && `추가 희망 기능(기타) : ${r.answers.features.etc}`, r.answers.overall?.factorEtc && `도입 결정 요인(기타) : ${r.answers.overall.factorEtc}`].filter(Boolean).map((t) => ({ who: `응답자 ${i + 1}`, text: t }))),
   };
 
   const dates = records.map((r) => r.submittedAt || r.savedAt || r.updatedAt).filter(Boolean).sort();
-  return { N, basic, abs, cat, overall, quant, ahp, top, sat, agent, features, intent, factors, texts, period: dates.length ? [dates[0], dates[dates.length - 1]] : null };
+  return { N, basic, abs, cat, overall, quant, ahp, top, sat, agent, features, factors, texts, period: dates.length ? [dates[0], dates[dates.length - 1]] : null };
 }
 
 // ── 보고서 블록 생성 ─────────────────────────────
@@ -131,7 +128,7 @@ export function buildReport(records, opts = {}) {
     [
       ...CATEGORIES.map((c, i) => [i === 0 ? { text: "전반적\n사용성 평가", rowSpan: 4 } : null, c.name, SUBITEMS[c.id].map((s) => s.name).join(" / "), i === 0 ? { text: "리커트\n5점 척도", rowSpan: 4 } : null].filter((x) => x !== null)),
       ...QUANT.map((q, i) => [i === 0 ? { text: "솔루션 적용\n정량 성과", rowSpan: 3 } : null, q.title, `${P} 적용 전후 ${q.short}(${q.unit})`, "–"].filter((x) => x !== null)),
-      [{ text: "개선 의견", rowSpan: 1 }, "현재 기능 만족도 · AGENT 기대 · 희망 기능 · 종합 평가", "기능별 만족도, 사용 의향, 도입 결정 요인, 자유 의견", "–"],
+      [{ text: "개선 의견", rowSpan: 1 }, "현재 기능 만족도 · AGENT 기대 · 희망 기능 · 도입 결정 요인", "기능별 만족도, AGENT 기대 수준 · 도입 의향, 추가 희망 기능, 도입 결정 요인, 자유 의견", "–"],
     ], { widths: [16, 22, 46, 16] });
   sq("AHP(Analytic Hierarchy Process) 분석 개요");
   o("본 조사에서는 사용성 평가항목별 상대적 중요도를 파악하기 위해 AHP 기법을 활용");
@@ -185,8 +182,6 @@ export function buildReport(records, opts = {}) {
     const better = a1.mean != null && a2.mean != null && a1.mean !== a2.mean ? (a1.mean > a2.mean ? i1 : i2) : null;
     o(`(${c.name}) ${i1.name} ${f1(a1.mean)}점, ${i2.name} ${f1(a2.mean)}점으로 ${levelText(mean([a1.mean, a2.mean]))}${better ? `이며, ${josa(better.name, "이가")} 상대적으로 우수한 것으로 나타남` : ""}`);
     dash(`응답 분포를 살펴볼 경우, ${i1.name}에 대해 응답자의 ${a1.posP.toFixed(1)}%(${a1.pos}명), ${i2.name}에 대해 응답자의 ${a2.posP.toFixed(1)}%(${a2.pos}명)가 긍정적(높음 또는 매우 높음)으로 응답`);
-    const mm = [i1, i2].filter((it) => S.abs[it.id].measureN > 0).map((it) => `${it.measureLabel} 평균 ${f1(S.abs[it.id].measureMean)}${it.id === "L7" ? "단계" : "%"}(${S.abs[it.id].measureN}명 기재)`);
-    if (mm.length) note(`응답자가 기재한 측정값 : ${mm.join(", ")}`);
     chart(barChart({ items: [i1, i2].map((it) => ({ label: it.name, value: S.abs[it.id].mean })), yLabels: LIKERT_Y, width: 520, height: 270 }), 520, 270, `${c.name} 측면의 우수성`);
     charts([i1, i2].map((it) => ({ svg: pieChart({ items: [5, 4, 3, 2, 1].map((s) => ({ label: `${s}: ${SCALE5[s - 1]}`, value: S.abs[it.id].rows.find((r) => r.s === s).c })), highlight: S.abs[it.id].n ? S.abs[it.id].posP : null }), w: 340, h: 230, caption: `${it.name} 측면의 우수성` })));
     table(`${c.name} 기여에 대한 응답 결과`,
@@ -269,16 +264,11 @@ export function buildReport(records, opts = {}) {
   const topFeat = [...S.features].sort((a, b) => b.top - a.top).filter((x) => x.top);
   if (topFeat.length) dash(`가장 필요한 기능 1개로는 ${topFeat.map((x) => `${x.label} ${x.top}명`).join(", ")}`);
   chart(hBarChart({ items: featSorted.map((x) => ({ label: x.label, value: x.value, extra: x.top ? `(최우선 ${x.top})` : "" })), max: Math.max(N, 1), labelW: 300 }), 640, featSorted.length * 30 + 20, "추가 희망 기능 선택 현황 (복수 선택)");
-  sq("종합 평가");
-  o(`실제 EMR 적용 시 사용 의향은 평균 ${f1(S.intent.mean)}점이며, 응답자의 ${S.intent.posP.toFixed(1)}%(${S.intent.pos}명)가 사용 의향이 「있음」 이상으로 응답`);
+  sq("도입 · 확산 결정 요인");
   const facNz = S.factors.filter((x) => x.value).sort((a, b) => b.value - a.value);
   o(facNz.length ? `도입 · 확산 결정 시 가장 중요한 요인은 ${facNz.map((x) => `${x.label} ${x.value}명`).join(", ")}` : "도입 · 확산 결정 요인 응답 없음");
-  charts([
-    { svg: pieChart({ items: [5, 4, 3, 2, 1].map((v) => ({ label: INTENT_SCALE[v - 1], value: S.intent.rows.find((r) => r.s === v).c })), highlight: S.intent.n ? S.intent.posP : null }), w: 340, h: 230, caption: "실제 EMR 적용 시 사용 의향" },
-    { svg: pieChart({ items: S.factors.filter((x) => x.value) }), w: 340, h: 230, caption: "도입 · 확산 결정 시 가장 중요한 요인" },
-  ]);
+  chart(hBarChart({ items: S.factors.map((x) => ({ ...x, extra: N ? `(${pctS(x.value, N)})` : "" })), max: Math.max(N, 1), labelW: 200 }), 640, S.factors.length * 30 + 20, "도입 · 확산 결정 시 가장 중요한 요인");
   const allQuotes = [
-    ...S.texts.notes.map((x) => ({ who: `${x.who} · ${x.cat} 측정값·비고`, text: x.text })),
     ...S.texts.etc,
     ...S.texts.comments.map((x) => ({ who: `${x.who} · 기타 의견`, text: x.text })),
   ];

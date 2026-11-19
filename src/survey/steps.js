@@ -22,14 +22,14 @@ export const STEPS = [
   { id: "satisfaction", title: "현재 기능 만족도", short: "만족도", missing: (a) => SATISFACTION.filter((s) => !a.satisfaction[s.id]).length },
   { id: "agent", title: "향후 AGENT 기능 기대 수준", short: "AGENT", missing: (a) => AGENT_Q.filter((q) => !a.agent[q.id]).length },
   { id: "features", title: "추가 희망 기능", short: "희망 기능", missing: (a) => (a.features.selected?.length ? 0 : 1) + (filled(a.features.top) ? 0 : 1) },
-  { id: "overall", title: "종합 평가", short: "종합 평가", missing: (a) => (a.overall.intent ? 0 : 1) + (filled(a.overall.factor) ? 0 : 1) },
+  { id: "overall", title: "종합 평가", short: "종합 평가", missing: (a) => (filled(a.overall.factor) ? 0 : 1) },
   { id: "review", title: "확인 및 제출", short: "제출", missing: () => 0 },
 ];
 
 export const totalMissing = (a) => STEPS.reduce((s, st) => s + st.missing(a), 0);
 
 // 전체 문항 수 (진행률 계산용)
-const EMPTY_TOTALS = 7 + BASIC.length + MAIN_PAIRS.length + 2 + SUB_PAIRS.length + ABS_ITEMS.length + QUANT.length + SATISFACTION.length + AGENT_Q.length + 2 + 2;
+const EMPTY_TOTALS = 7 + BASIC.length + MAIN_PAIRS.length + 2 + SUB_PAIRS.length + ABS_ITEMS.length + QUANT.length + SATISFACTION.length + AGENT_Q.length + 2 + 1;
 export const progressPct = (a) => {
   if (!a) return 0;
   const miss = totalMissing(a);
