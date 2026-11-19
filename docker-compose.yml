@@ -1,17 +1,34 @@
+# PuzzleGen Dental 사용성 평가 — pgd.puzzle-ai.com (Cloudflare Tunnel)
+#
 # 사용법
-#   1) .env.example 을 .env 로 복사하고 SURVEY_ADMIN_PIN 을 바꿉니다
+#   1) cp .env.example .env  →  SURVEY_ADMIN_PIN, CLOUDFLARE_TUNNEL_TOKEN 입력
 #   2) docker compose up -d --build
+#
+# 구성
+#   survey : 설문 화면 + 저장 API (외부에 포트를 열지 않음, 서버 내부 127.0.0.1:8080만 허용)
+#   tunnel : Cloudflare Tunnel — https://pgd.puzzle-ai.com 요청을 survey 컨테이너로 전달
 # 응답 원본은 ./data 폴더에 저장되며, 컨테이너를 다시 만들어도 유지됩니다.
 services:
   survey:
     build: .
     image: puzzlegen-survey
-    container_name: puzzlegen-survey
+    container_name: pgd-survey
     restart: unless-stopped
     ports:
-      - "${PORT:-8080}:8080"
+      - "127.0.0.1:${PORT:-8080}:8080"
     environment:
       SURVEY_ADMIN_PIN: ${SURVEY_ADMIN_PIN:?SURVEY_ADMIN_PIN 을 .env 에 설정하세요}
       TZ: Asia/Seoul
     volumes:
       - ./data:/app/data
+
+  tunnel:
+    image: cloudflare/cloudflared:2026.9.3
+    container_name: pgd-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN 을 .env 에 설정하세요 (SURVEY_README.md 1단계 참고)}
+    depends_on:
+      survey:
+        condition: service_healthy

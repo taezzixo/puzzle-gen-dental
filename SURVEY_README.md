@@ -1,4 +1,4 @@
-# PuzzleGen Dental 사용성 평가 웹 설문 — Node 서버 배포
+# PuzzleGen Dental 사용성 평가 (PGD) — pgd.puzzle-ai.com
 
 POC 체험에 참여한 평가자 5명이 웹 주소로 접속해 설문에 답하고 저장하는 화면입니다.
 관리자는 응답을 모아 보고서를 보고 Word · PDF로 내려받을 수 있습니다.
@@ -6,46 +6,75 @@ Node 서버 하나가 화면과 저장 API를 함께 제공하며, 응답은 서
 
 | 화면 | 주소 | 설명 |
 |---|---|---|
-| 평가자 설문 | `https://<도메인>/#/survey` | 평가자 번호(1~5)를 고른 뒤 단계별로 응답합니다 |
-| 평가자 바로가기 | `https://<도메인>/#/survey/3` | 3번 평가자 화면으로 바로 들어갑니다 (개인별 링크로 전달) |
-| 관리자 | `https://<도메인>/#/admin` | 비밀번호를 입력해 응답 현황, 보고서, 원자료를 확인합니다 |
-| 기존 PoC 데모 | `https://<도메인>/` | 오른쪽 위 **「사용성 평가 참여」** 버튼으로 설문 화면으로 이동합니다 |
+| 평가자 설문 | **https://pgd.puzzle-ai.com/#/survey** | 평가자 번호(1~5)를 고른 뒤 단계별로 응답합니다 |
+| 평가자 바로가기 | https://pgd.puzzle-ai.com/#/survey/3 | 3번 평가자 화면으로 바로 들어갑니다 (개인별 링크로 전달) |
+| 관리자 | **https://pgd.puzzle-ai.com/#/admin** | 비밀번호를 입력해 응답 현황, 보고서, 원자료를 확인합니다 |
+| 기존 PoC 데모 | https://pgd.puzzle-ai.com/ | 오른쪽 위 **「사용성 평가 참여」** 버튼으로 설문 화면으로 이동합니다 |
+
+> 도메인 이름은 Cloudflare 대시보드에서만 정합니다. 코드에는 도메인이 들어 있지 않으므로 다른 이름을 쓰려면 아래 1단계의 Public hostname만 바꾸면 됩니다.
 
 ---
 
-## 1. 서버에 배포하기
+## 구성 한눈에 보기
 
-준비물은 리눅스 서버 1대(클라우드 VM 등)와, 평가자가 접속할 도메인 또는 서버 IP입니다.
+```
+평가자/관리자 브라우저 ──HTTPS──▶ Cloudflare (pgd.puzzle-ai.com)
+                                      │  Cloudflare Tunnel (서버에서 바깥으로 연결)
+                                      ▼
+                    서버: [tunnel 컨테이너] ──▶ [survey 컨테이너 :8080] ──▶ ./data (응답 원본)
+```
+
+- 서버의 포트를 인터넷에 열 필요가 없습니다. 방화벽에서 80, 443, 8080을 열지 않아도 됩니다.
+- HTTPS 인증서는 Cloudflare가 자동으로 발급하고 갱신합니다.
+- 서버가 사무실 공유기 뒤나 사내망에 있어도 동작합니다. 바깥으로 인터넷 연결만 되면 됩니다.
+
+---
+
+## 1단계. Cloudflare에서 터널 만들기 (처음 한 번)
+
+1. Cloudflare 대시보드에 로그인한 뒤 **Zero Trust**로 들어갑니다. 메뉴에서 **Networks → Tunnels**를 고릅니다.
+2. **Create a tunnel** → 유형 **Cloudflared**를 고르고, 터널 이름을 `pgd`로 정합니다.
+3. 설치 안내 화면에 `cloudflared ... --token eyJ...` 형태의 명령이 나옵니다. 여기서 **`eyJ`로 시작하는 토큰만** 복사해 둡니다. 명령 자체는 실행하지 않아도 됩니다.
+4. **Public hostname** 탭에서 아래처럼 입력하고 저장합니다.
+
+| 항목 | 값 |
+|---|---|
+| Subdomain | `pgd` |
+| Domain | `puzzle-ai.com` |
+| Path | (비움) |
+| Service Type | `HTTP` |
+| URL | `survey:8080` ※ Docker 방식. PM2 방식이면 `localhost:8080` |
+
+DNS 레코드(`pgd` CNAME)는 Cloudflare가 자동으로 만듭니다.
+
+## 2단계. 서버에서 실행하기
 
 ### 방법 A. Docker (권장)
 
-서버에 Docker가 설치되어 있으면 아래 순서로 실행합니다.
-
 ```bash
-git clone https://github.com/taezzixo/puzzle-gen-dental.git
+git clone -b claude/funny-cori-rljacc https://github.com/taezzixo/puzzle-gen-dental.git
 ```
 
 ```bash
-cd puzzle-gen-dental
+cd puzzle-gen-dental && cp .env.example .env
 ```
 
-```bash
-cp .env.example .env
-```
+`.env` 파일을 열어 두 값을 채웁니다.
 
-`.env` 파일을 열어 `SURVEY_ADMIN_PIN=` 뒤에 관리자 비밀번호를 적습니다. `1234`는 쓸 수 없습니다.
+```
+SURVEY_ADMIN_PIN=관리자_비밀번호
+CLOUDFLARE_TUNNEL_TOKEN=eyJ...(1단계에서 복사한 토큰)
+```
 
 ```bash
 docker compose up -d --build
 ```
 
-- `http://서버주소:8080/#/survey` 로 접속되면 성공입니다.
-- 응답 원본은 `puzzle-gen-dental/data/` 폴더에 저장되고, 컨테이너를 다시 만들어도 유지됩니다.
-- 서버가 재부팅되어도 자동으로 다시 실행됩니다(`restart: unless-stopped`).
+1~2분 뒤 Cloudflare 터널 목록에서 `pgd`가 **HEALTHY**로 바뀌면 https://pgd.puzzle-ai.com/#/survey 로 접속됩니다.
 
-### 방법 B. Docker 없이 Node로 직접 실행 (PM2)
+### 방법 B. Docker 없이 (PM2 + cloudflared 직접 설치)
 
-Node 18 이상이 필요합니다.
+Node 18 이상이 필요합니다. 1단계의 Service URL은 `localhost:8080`으로 입력합니다.
 
 ```bash
 cd puzzle-gen-dental && npm ci && npm run build
@@ -55,7 +84,7 @@ cd puzzle-gen-dental && npm ci && npm run build
 cp .env.example .env
 ```
 
-`.env`에 `SURVEY_ADMIN_PIN`을 적은 뒤 PM2로 실행합니다.
+`.env`에 `SURVEY_ADMIN_PIN`을 적고 서버를 실행합니다. 이 방식에서는 `CLOUDFLARE_TUNNEL_TOKEN`을 쓰지 않습니다.
 
 ```bash
 npm install -g pm2
@@ -65,62 +94,41 @@ npm install -g pm2
 pm2 start ecosystem.config.cjs && pm2 save && pm2 startup
 ```
 
-`pm2 startup`이 출력하는 명령을 한 번 더 실행하면, 서버 재부팅 후에도 자동으로 실행됩니다.
+이어서 [Cloudflare 안내](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)에 따라 서버에 cloudflared를 설치하고, 토큰으로 서비스를 등록합니다.
 
-간단히 시험만 할 때는 `.env`를 만든 뒤 `npm start`만 실행해도 됩니다.
+```bash
+sudo cloudflared service install eyJ...(토큰)
+```
 
-### 환경변수
+### 환경변수 (.env)
 
-| 이름 | 필수 | 기본값 | 설명 |
-|---|---|---|---|
-| `SURVEY_ADMIN_PIN` | ✔ | 없음 | 관리자 비밀번호. 없거나 `1234`이면 서버가 시작되지 않습니다 |
-| `PORT` | | `8080` | 서버 포트 |
-| `HOST` | | `0.0.0.0` | 바인딩 주소 (리버스 프록시 뒤에서만 열려면 `127.0.0.1`) |
-| `SURVEY_DATA_DIR` | | `./data` | 응답 저장 폴더 |
+| 이름 | 필수 | 설명 |
+|---|---|---|
+| `SURVEY_ADMIN_PIN` | ✔ | 관리자 비밀번호. 없거나 `1234`이면 서버가 시작되지 않습니다 |
+| `CLOUDFLARE_TUNNEL_TOKEN` | ✔ (Docker) | 1단계에서 받은 터널 토큰 |
+| `PORT` | | 서버 내부 포트 (기본 8080) |
+| `SURVEY_DATA_DIR` | | 응답 저장 폴더 (기본 `./data`) |
+
+### Cloudflare 권장 설정 (선택)
+
+아래는 기본값 그대로 두면 됩니다. 특별히 바꿀 것은 없습니다.
+
+- **SSL/TLS**: 터널 방식은 자동으로 HTTPS가 적용됩니다. 서버에 인증서를 따로 둘 필요가 없습니다.
+- **Speed → Rocket Loader**: 끈 상태(기본값)로 두세요. 켜면 화면 스크립트 실행 순서가 바뀔 수 있습니다.
+- **캐시**: 서버가 화면 파일은 오래 캐시하고, 응답 저장 API는 캐시하지 않도록 헤더를 보냅니다.
 
 ---
 
-## 2. HTTPS 연결 (권장)
-
-평가자에게는 `https://` 주소를 전달하는 것이 좋습니다. 브라우저의 「주의 요함」 경고가 뜨지 않습니다.
-도메인(예: `survey.puzzle-ai.com`)의 DNS를 서버 IP로 연결한 뒤, 아래 중 하나를 앞단에 둡니다.
-
-**Caddy** — 인증서를 자동으로 발급하고 갱신하므로 가장 간단합니다. `/etc/caddy/Caddyfile`에 다음을 적습니다.
-
-```
-survey.puzzle-ai.com {
-    reverse_proxy 127.0.0.1:8080
-}
-```
-
-**nginx** — 이미 nginx를 쓰고 있다면 아래처럼 연결하고, 인증서는 certbot으로 발급합니다.
-
-```
-server {
-    server_name survey.puzzle-ai.com;
-    location / {
-        proxy_pass http://127.0.0.1:8080;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $remote_addr;
-        client_max_body_size 5m;
-    }
-}
-```
-
-리버스 프록시를 쓰면 8080 포트는 외부에 열 필요가 없습니다.
-
----
-
-## 3. 운영
+## 운영
 
 | 작업 | Docker | PM2 |
 |---|---|---|
-| 상태 확인 | `docker compose ps` | `pm2 status` |
+| 상태 확인 | `docker compose ps` | `pm2 status` / `systemctl status cloudflared` |
 | 로그 보기 | `docker compose logs -f` | `pm2 logs puzzlegen-survey` |
 | 재시작 | `docker compose restart` | `pm2 restart puzzlegen-survey` |
 | 코드 업데이트 | `git pull && docker compose up -d --build` | `git pull && npm ci && npm run build && pm2 restart puzzlegen-survey` |
 
-- **동작 확인**: `http://서버주소:8080/healthz`가 `ok`를 반환하면 정상입니다.
+- **동작 확인**: 서버에서 `curl http://127.0.0.1:8080/healthz`가 `ok`를 반환하면 정상입니다. 외부 접속이 안 되면 Cloudflare 터널 목록에서 `pgd`가 HEALTHY인지 확인하세요.
 - **백업**: `data/` 폴더를 통째로 복사하면 됩니다. 관리자 화면의 「전체 원본 (JSON)」 버튼으로도 받을 수 있습니다.
   - `data/responses/evaluator-N.json`: 평가자별 최신 응답
   - `data/history/`: 저장할 때마다 남는 이력
@@ -129,7 +137,7 @@ server {
 
 ---
 
-## 4. 평가자 화면 (60대 이상 고령 평가자 기준 설계)
+## 평가자 화면 (60대 이상 고령 평가자 기준 설계)
 
 - 큰 글씨(기본 18px)를 쓰고, 오른쪽 위 **「가 가 가」** 버튼으로 글자를 2단계 더 키울 수 있습니다.
 - **누르는 곳**은 진한 파란 테두리의 큰 버튼입니다. 선택하면 색이 꽉 차고 ✓ 표시가 나타납니다. 키보드로 이동하면 노란 테두리가 표시됩니다.
@@ -140,7 +148,7 @@ server {
 - 절대평가 L-1~L-8에서는 측정값을 입력하면 해당 점수 구간을 「측정값 기준」으로 표시합니다. 점수는 평가자가 직접 고릅니다.
 - 마지막 화면에서 빠진 문항을 확인하고 [설문 제출하기]를 누릅니다. 제출한 뒤에도 수정할 수 있습니다.
 
-## 5. 관리자 화면
+## 관리자 화면
 
 - 평가자 5명의 상태(미시작 / 작성 중 / 제출 완료), 진행률, 마지막 저장 시각을 보여 줍니다.
 - 평가자마다 원본 응답을 확인할 수 있습니다.
@@ -153,7 +161,7 @@ server {
   - 「3장 시사점」은 통계로 자동 작성한 초안입니다. Word로 받아 문구를 다듬어 주세요.
 - 관리자 비밀번호를 15분 안에 10번 틀리면, 해당 접속 위치는 15분 동안 차단됩니다.
 
-## 6. 설정 변경
+## 설정 변경
 
 `src/survey/config.js`에서 다음 값을 바꿀 수 있습니다.
 
@@ -163,7 +171,7 @@ server {
 
 설문 문항은 `src/survey/questions.js`에 모여 있습니다. 수정한 뒤에는 다시 빌드하고 재시작해 주세요.
 
-## 7. 개발 · 로컬 시험
+## 개발 · 로컬 시험
 
 ```bash
 npm install && npm run dev

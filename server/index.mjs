@@ -45,7 +45,8 @@ const api = createSurveyApi({ dataDir: DATA_DIR, adminPin: ADMIN_PIN });
 // ── 관리자 비밀번호 무차별 대입 방지: IP당 15분에 10회 실패 시 차단 ──
 const fails = new Map();
 const WINDOW = 15 * 60 * 1000, MAX_FAILS = 10;
-const clientIp = (req) => String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.socket.remoteAddress || "";
+// Cloudflare를 거친 요청은 CF-Connecting-IP에 실제 접속자 IP가 담김
+const clientIp = (req) => String(req.headers["cf-connecting-ip"] || req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.socket.remoteAddress || "";
 function pinGuard(req, res) {
   const url = new URL(req.url, "http://local");
   if (url.searchParams.get("action") !== "list") return false;
