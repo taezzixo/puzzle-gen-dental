@@ -130,8 +130,6 @@ export default function SurveyApp() {
 
   const goto = (i) => {
     setStep(i); setMissingPrompt(null);
-    // 현재 위치를 이 브라우저에 바로 기록 (새로고침해도 같은 화면에서 이어서)
-    setRecord((r) => { const nr = { ...r, step: i }; writeDraft(nr); return nr; });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const next = async (force) => {
