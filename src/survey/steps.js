@@ -8,7 +8,7 @@ export const STEPS = [
   { id: "intro", title: "조사 안내", short: "안내", missing: () => 0 },
   {
     id: "consent", title: "개인정보 수집 · 이용 동의", short: "동의",
-    missing: (a) => ["c1", "c2", "c3"].filter((k) => !a.consent[k]).length + ["org", "dept", "name"].filter((k) => !filled(a.consent[k])).length + (a.consent.signed ? 0 : 1),
+    missing: (a) => ["c1", "c2", "c3"].filter((k) => !a.consent[k]).length + ["org", "dept", "name"].filter((k) => !filled(a.consent[k])).length + (a.consent.signed ? 0 : 1) + (a.consent.signature ? 0 : 1),
   },
   { id: "basic", title: "응답자 기본정보", short: "기본정보", missing: (a) => BASIC.filter((q) => !filled(a.basic[q.id])).length },
   { id: "ahpMain", title: "평가항목 중요도 비교 (대분류)", short: "중요도 ①", missing: (a) => MAIN_PAIRS.filter((p) => !pairDone(a.ahpMain[p.id])).length },
@@ -29,7 +29,7 @@ export const STEPS = [
 export const totalMissing = (a) => STEPS.reduce((s, st) => s + st.missing(a), 0);
 
 // 전체 문항 수 (진행률 계산용)
-const EMPTY_TOTALS = 7 + BASIC.length + MAIN_PAIRS.length + 2 + SUB_PAIRS.length + ABS_ITEMS.length + QUANT.length + SATISFACTION.length + AGENT_Q.length + 2 + 1;
+const EMPTY_TOTALS = 8 + BASIC.length + MAIN_PAIRS.length + 2 + SUB_PAIRS.length + ABS_ITEMS.length + QUANT.length + SATISFACTION.length + AGENT_Q.length + 2 + 1;
 export const progressPct = (a) => {
   if (!a) return 0;
   const miss = totalMissing(a);

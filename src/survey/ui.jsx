@@ -1,7 +1,7 @@
 // 설문 UI 구성요소 — 블랙 앤 화이트 미니멀 디자인
 // 원칙: 누를 수 있는 것 = 테두리 버튼, 선택 시 검정으로 채움
 //       설명 · 평가 기준 = 회색 작은 글씨 (눈에 덜 띄게)
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { INTENSITY } from "./questions.js";
 
 export const cx = (...a) => a.filter(Boolean).join(" ");
@@ -183,5 +183,74 @@ export function QCard({ no, title, hint, children }) {
       </header>
       {children}
     </section>
+  );
+}
+
+// 서명 칸: 마우스 · 손가락 · 펜으로 그리기 → PNG(data URL)로 저장
+export function SignaturePad({ value, onChange, height = 160 }) {
+  const ref = useRef(null);
+  const drawing = useRef(false);
+  const last = useRef(null);
+  const drew = useRef(false);
+
+  // 캔버스 크기 맞추기 + 저장된 서명 다시 그리기
+  useEffect(() => {
+    const cv = ref.current;
+    const setup = () => {
+      const w = cv.clientWidth, dpr = Math.min(window.devicePixelRatio || 1, 2);
+      cv.width = Math.round(w * dpr); cv.height = Math.round(height * dpr);
+      const ctx = cv.getContext("2d");
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.lineWidth = 2.2; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = "#111";
+      if (value) { const img = new Image(); img.onload = () => ctx.drawImage(img, 0, 0, w, height); img.src = value; }
+    };
+    setup();
+    const ro = new ResizeObserver(() => { if (cv.width !== Math.round(cv.clientWidth * Math.min(window.devicePixelRatio || 1, 2))) setup(); });
+    ro.observe(cv);
+    return () => ro.disconnect();
+    // eslint-disable-next-line
+  }, []);
+
+  const pos = (e) => { const r = ref.current.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  const down = (e) => {
+    e.preventDefault();
+    ref.current.setPointerCapture?.(e.pointerId);
+    drawing.current = true; last.current = pos(e);
+    const ctx = ref.current.getContext("2d");
+    ctx.beginPath(); ctx.arc(last.current.x, last.current.y, 1.1, 0, Math.PI * 2); ctx.fillStyle = "#111"; ctx.fill();
+    drew.current = true;
+  };
+  const move = (e) => {
+    if (!drawing.current) return;
+    e.preventDefault();
+    const p = pos(e), ctx = ref.current.getContext("2d");
+    ctx.beginPath(); ctx.moveTo(last.current.x, last.current.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+    last.current = p;
+  };
+  const up = () => {
+    if (!drawing.current) return;
+    drawing.current = false;
+    if (drew.current) onChange(ref.current.toDataURL("image/png"));
+  };
+  const clear = () => {
+    const cv = ref.current, ctx = cv.getContext("2d");
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height); ctx.restore();
+    drew.current = false; onChange("");
+  };
+
+  return (
+    <div>
+      <div className="relative rounded-lg border border-neutral-300 bg-white overflow-hidden">
+        <canvas ref={ref} style={{ width: "100%", height, touchAction: "none", display: "block", cursor: "crosshair" }}
+          onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerLeave={up} onPointerCancel={up}
+          aria-label="서명 입력란 — 마우스나 손가락으로 서명해 주세요" role="img" />
+        {!value && <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[13px] text-neutral-400">여기에 마우스나 손가락으로 서명해 주세요</span>}
+        <span className="pointer-events-none absolute left-4 right-4 bottom-8 border-b border-dashed border-neutral-200" />
+      </div>
+      <div className="flex items-center justify-between mt-1.5">
+        <span className="text-[12px] text-neutral-500">{value ? "✓ 서명이 입력되었습니다" : "서명은 필수입니다"}</span>
+        <button type="button" onClick={clear} disabled={!value} className="sv-link text-[12px] text-neutral-500 underline underline-offset-4 hover:text-neutral-900 disabled:opacity-30 disabled:no-underline">다시 쓰기</button>
+      </div>
+    </div>
   );
 }

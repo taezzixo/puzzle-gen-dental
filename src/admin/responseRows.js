@@ -29,7 +29,9 @@ export function responseSections(rec) {
     title: "0. 개인정보 수집 · 이용 동의", rows: [
       ...CONSENT_ITEMS.map((it, i) => [`${i + 1}. ${it.text}`, consentText(c[it.id])]),
       ["소속기관", v(c.org)], ["진료과목", v(c.dept)], ["성명", v(c.name)],
-      ["서명(동의 확인)", c.signed ? `확인 (${fmtDT(c.signedAt)})` : ""],
+      ["동의 확인", c.signed ? `확인 (${fmtDT(c.signedAt)})` : ""],
+      // 서명 이미지: { image: data URL, text: 표 · CSV용 설명 }
+      ["서명", c.signature ? { image: c.signature, text: `서명함 (${fmtDT(c.signatureAt)})` } : ""],
     ],
   });
   const b = a.basic || {};
@@ -87,7 +89,7 @@ export function responseSections(rec) {
 // CSV (엑셀 호환, UTF-8 BOM). 열 = 모든 문항, 행 = 평가자
 export function toCsv(records) {
   if (!records.length) return "﻿평가자 번호\n";
-  const flat = records.map((r) => responseSections(r).flatMap((s) => s.rows.map(([q, ans]) => [`[${s.title}] ${q}`, ans])));
+  const flat = records.map((r) => responseSections(r).flatMap((s) => s.rows.map(([q, ans]) => [`[${s.title}] ${q}`, ans && typeof ans === "object" ? ans.text : ans])));
   const header = flat[0].map(([q]) => q);
   const esc = (x) => `"${String(x ?? "").replace(/"/g, '""')}"`;
   return "﻿" + [header.map(esc).join(","), ...flat.map((row) => row.map(([, ans]) => esc(ans)).join(","))].join("\r\n");

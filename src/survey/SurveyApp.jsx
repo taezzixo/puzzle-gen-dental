@@ -6,7 +6,7 @@ import {
 } from "./questions.js";
 import { STEPS, progressPct, totalMissing } from "./steps.js";
 import { saveRecord, fetchByName, readDraft, writeDraft, clearDraft, nameKey } from "./storage.js";
-import { Choice, ChoiceGrid, Scale5, PairCompare, NumField, TextField, TextArea, Note, More, QCard, cx } from "./ui.jsx";
+import { Choice, ChoiceGrid, Scale5, PairCompare, NumField, TextField, TextArea, Note, More, QCard, SignaturePad, cx } from "./ui.jsx";
 
 const fmtTime = (iso) => (iso ? new Date(iso).toLocaleString("ko-KR", { month: "long", day: "numeric", hour: "numeric", minute: "2-digit" }) : "");
 
@@ -130,6 +130,8 @@ export default function SurveyApp() {
 
   const goto = (i) => {
     setStep(i); setMissingPrompt(null);
+    // 현재 위치를 이 브라우저에 바로 기록 (새로고침해도 같은 화면에서 이어서)
+    setRecord((r) => { const nr = { ...r, step: i }; writeDraft(nr); return nr; });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const next = async (force) => {
@@ -343,8 +345,12 @@ function Consent({ A, update }) {
           <TextField label="성명" value={c.name} onChange={(v) => update((a) => { a.consent.name = v; })} />
           <Note>응답은 성명 기준으로 저장됩니다. 다른 기기에서도 같은 성명을 입력하면 이어서 작성할 수 있습니다.</Note>
           <Choice multi selected={c.signed} onClick={() => update((a) => { a.consent.signed = !a.consent.signed; a.consent.signedAt = new Date().toISOString(); })}>
-            위 내용을 이해하였으며, 위와 같이 동의합니다. (서명)
+            위 내용을 이해하였으며, 위와 같이 동의합니다.
           </Choice>
+          <div className="pt-1">
+            <span className="block text-[13px] font-medium text-neutral-700 mb-1">서명</span>
+            <SignaturePad value={c.signature} onChange={(v) => update((a) => { a.consent.signature = v; a.consent.signatureAt = v ? new Date().toISOString() : ""; })} />
+          </div>
         </div>
       </QCard>
     </>

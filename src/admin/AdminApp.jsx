@@ -68,7 +68,11 @@ function ResponseModal({ rec, onClose, onWord }) {
                   {s.rows.map(([q, a], i) => (
                     <tr key={i} className="border-b border-neutral-100 align-top">
                       <td className="py-1.5 pr-3 text-neutral-600 w-[46%]">{q}</td>
-                      <td className={`py-1.5 whitespace-pre-wrap ${a ? "font-semibold text-neutral-900" : "text-neutral-300"}`}>{a || "미응답"}</td>
+                      <td className={`py-1.5 whitespace-pre-wrap ${a ? "font-semibold text-neutral-900" : "text-neutral-300"}`}>
+                        {a && typeof a === "object"
+                          ? <span className="block"><img src={a.image} alt="서명" className="h-20 max-w-full border border-neutral-200 rounded bg-white" /><span className="block text-[11px] font-normal text-neutral-500 mt-1">{a.text}</span></span>
+                          : a || "미응답"}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

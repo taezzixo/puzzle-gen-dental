@@ -191,7 +191,7 @@ export const FACTORS = ["인식 · 판독 정확도", "시간 절감 효과", "E
 
 // 빈 응답 구조
 export const emptyAnswers = () => ({
-  consent: { c1: "", c2: "", c3: "", org: "", dept: "", name: "", signed: false },
+  consent: { c1: "", c2: "", c3: "", org: "", dept: "", name: "", signed: false, signature: "" },
   basic: { duty: [], careTypes: [] },
   ahpMain: {},
   mainTop: "",

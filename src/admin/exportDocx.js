@@ -146,6 +146,25 @@ export async function exportReportDocx(blocks, filename) {
 }
 const REPORT_MARGIN = { top: 1300, bottom: 1200, left: 1250, right: 1250 };
 
+// 서명 이미지(data URL) → Word 단락
+function signatureParas(a) {
+  try {
+    const b64 = String(a.image).split(",")[1] || "";
+    const bin = atob(b64);
+    const data = Uint8Array.from(bin, (ch) => ch.charCodeAt(0));
+    // PNG 헤더에서 원본 크기를 읽어 비율 유지
+    const dv = new DataView(data.buffer);
+    const w = dv.getUint32(16), h = dv.getUint32(20);
+    const outW = 220, outH = Math.max(1, Math.round((outW * h) / Math.max(1, w)));
+    return [
+      new Paragraph({ children: [new ImageRun({ type: "png", data, transformation: { width: outW, height: outH } })] }),
+      new Paragraph({ children: [run(a.text, { size: 16, color: "6B7280" })] }),
+    ];
+  } catch {
+    return [new Paragraph({ children: [run(a.text || "서명함", { size: 19, bold: true })] })];
+  }
+}
+
 // ── 평가자 개인 응답지 (원본) ────────────────────
 export async function exportResponseDocx(rec, filename, { title } = {}) {
   const children = [
@@ -159,7 +178,7 @@ export async function exportResponseDocx(rec, filename, { title } = {}) {
       rows: s.rows.map(([q, a]) => new TableRow({
         cantSplit: true, children: [
           new TableCell({ borders: cellBorders, width: { size: 46, type: WidthType.PERCENTAGE }, shading: { type: ShadingType.CLEAR, color: "auto", fill: "F5F5F5" }, margins: { top: 40, bottom: 40, left: 80, right: 80 }, children: [new Paragraph({ children: multiline(q, { size: 18 }) })] }),
-          new TableCell({ borders: cellBorders, width: { size: 54, type: WidthType.PERCENTAGE }, margins: { top: 40, bottom: 40, left: 80, right: 80 }, children: [new Paragraph({ children: multiline(a || "(미응답)", { size: 19, bold: !!a, color: a ? "000000" : "9CA3AF" }) })] }),
+          new TableCell({ borders: cellBorders, width: { size: 54, type: WidthType.PERCENTAGE }, margins: { top: 40, bottom: 40, left: 80, right: 80 }, children: a && typeof a === "object" ? signatureParas(a) : [new Paragraph({ children: multiline(a || "(미응답)", { size: 19, bold: !!a, color: a ? "000000" : "9CA3AF" }) })] }),
         ],
       })),
     }));
